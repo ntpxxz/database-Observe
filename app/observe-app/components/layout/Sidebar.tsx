@@ -1,77 +1,69 @@
-'use client';
-import React, { FC, useState } from 'react';
-import { Server as ServerIcon, ChevronDown, ChevronRight, Home } from 'lucide-react';
+
+import React, { FC } from 'react';
+import { Server as ServerIcon, ChevronDown, ChevronRight, LayoutDashboard, List, Wifi } from 'lucide-react';
 import { DatabaseInventory } from '@/types';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 
 interface SidebarProps {
   servers: DatabaseInventory[];
-  activeServerId?: number | null;
-  onSelectServer?: (id: number) => void;
+  activeServerId: string | null;
+  activeView: 'dashboard' | 'manage' | 'scan';
+  onSelectServer: (id: string) => void;
+  onSetView: (view: 'dashboard' | 'manage' | 'scan') => void;
 }
 
-export const Sidebar: FC<SidebarProps> = ({ servers, activeServerId, onSelectServer }) => {
-  const [isServerExpanded, setIsServerExpanded] = useState(true);
-  const pathname = usePathname();
+export const Sidebar: FC<SidebarProps> = ({ servers, activeServerId, activeView, onSelectServer, onSetView }) => {
+  const [openZones, setOpenZones] = React.useState<{ [key: string]: boolean }>({});
 
-  const navigation = [
-    { name: 'Dashboard', href: '/', icon: Home }
-  ];
+  const groupedServers = servers.reduce((acc, server) => {
+    const zone = server.zone || 'Uncategorized';
+    if (!acc[zone]) acc[zone] = [];
+    acc[zone].push(server);
+    return acc;
+  }, {} as { [key: string]: DatabaseInventory[] });
 
   return (
-    <aside className="flex h-screen w-64 flex-col bg-gray-800">
-      <div className="flex h-16 items-center px-4">
-        <h1 className="text-xl font-bold text-white">DB Observer</h1>
-      </div>
+    <aside className="w-72 bg-slate-900 border-r border-slate-800 p-4 flex flex-col">
+        <h1 className="text-2xl font-bold mb-6 flex items-center text-white">
+            <LayoutDashboard className="mr-3 text-sky-400"/> Observability
+        </h1>
+        <nav className="flex-grow space-y-2">
+            {/* Main Navigation */}
+            <button 
+                onClick={() => onSetView('manage')} 
+                className={`w-full flex items-center py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${activeView === 'manage' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                <List className="mr-3"/> Manage Inventory
+            </button>
+            <button 
+                onClick={() => onSetView('scan')} 
+                className={`w-full flex items-center py-2 px-3 rounded-lg text-sm font-semibold transition-colors ${activeView === 'scan' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>
+                <Wifi className="mr-3"/> Network Scan
+            </button>
 
-      <nav className="flex-1 space-y-1 px-2">
-        {navigation.map((item) => (
-          <Link
-            key={item.name}
-            href={item.href}
-            className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md 
-              ${pathname === item.href 
-                ? 'bg-gray-900 text-white' 
-                : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}
-          >
-            <item.icon className="mr-3 h-5 w-5" />
-            {item.name}
-          </Link>
-        ))}
-
-        {/* Servers Section */}
-        <div className="pt-4">
-          <button 
-            onClick={() => setIsServerExpanded(!isServerExpanded)}
-            className="w-full flex items-center justify-between py-2 px-2 text-gray-300 hover:bg-gray-700 rounded-md"
-          >
-            <div className="flex items-center">
-              <ServerIcon className="mr-3 h-5 w-5" />
-              <span className="font-medium">Servers</span>
-            </div>
-            {isServerExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          </button>
-
-          {isServerExpanded && servers && servers.length > 0 && (
-            <div className="mt-1 pl-2">
-              {servers.map((server) => (
-                <button
-                  key={server.inventoryID}
-                  onClick={() => onSelectServer?.(server.inventoryID)}
-                  className={`w-full flex items-center px-3 py-2 text-sm rounded-lg transition-colors
-                    ${activeServerId === server.inventoryID 
-                      ? 'bg-sky-500/10 text-sky-300' 
-                      : 'text-gray-400 hover:bg-gray-700 hover:text-white'}`}
-                >
-                  <ServerIcon size={16} className="mr-2" />
-                  {server.systemName}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </nav>
+            {/* Server List */}
+            <div className="border-b border-slate-800 my-4"></div>
+            <h2 className="px-3 text-xs text-slate-500 font-bold uppercase tracking-wider mb-2">Databases</h2>
+            {Object.entries(groupedServers).map(([zone, serverList]) => (
+                <div key={zone}>
+                    <button onClick={() => setOpenZones(p => ({...p, [zone]: !p[zone]}))} className="w-full flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-800 text-sm font-semibold text-slate-300">
+                        <span>{zone}</span>
+                        {openZones[zone] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    </button>
+                    {openZones[zone] && (
+                        <ul className="pl-4 mt-1 space-y-1">
+                            {serverList.map(server => (
+                                <li key={server.inventoryID}>
+                                    <a href="#" onClick={(e) => { e.preventDefault(); onSelectServer(server.inventoryID); }}
+                                        className={`flex items-center py-2 px-3 rounded-lg text-sm relative ${activeServerId === server.inventoryID ? 'bg-sky-500/10 text-sky-300' : 'hover:bg-slate-800/50 text-slate-400'}`}>
+                                        {activeServerId === server.inventoryID && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 bg-sky-400 rounded-r-full"></span>}
+                                        <ServerIcon size={16} className="mr-3 ml-2"/>{server.systemName}
+                                    </a>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            ))}
+        </nav>
     </aside>
   );
 };

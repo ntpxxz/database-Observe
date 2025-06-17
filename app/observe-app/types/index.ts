@@ -25,6 +25,7 @@ export interface Server {
   name: string;
   host: string;
   port: number;
+  zone?: string;
   type: string;
   database: string;
   username: string;
@@ -109,6 +110,7 @@ export interface ServerConfig {
   name: string;
   host: string;
   port: number;
+  zone?: string;
   type: 'postgres' | 'mysql' | 'mssql';
   username: string;
   password: string;
@@ -121,6 +123,7 @@ export interface ServerResponse {
   error?: string;
 }
 export interface ServerMetrics {
+  performanceInsights: PerformanceInsight[] | { error: string; };
   server: {
     id: number;
     name: string;
@@ -145,6 +148,7 @@ export interface DatabaseInventory {
   systemName: string;
   serverHost: string;
   port: number;
+  zone: string;
   databaseName: string;
   databaseType: string;
   connectionUsername: string;
@@ -170,3 +174,4 @@ export interface DatabaseMetrics {
   }>;
   last_checked: string;
 }
+export type DatabaseInventoryFormData = Omit<DatabaseInventory, 'id' | 'inventoryID'>;

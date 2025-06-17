@@ -13,6 +13,7 @@ export async function GET(): Promise<NextResponse> {
           SystemName as systemName,
           ServerHost as serverHost,
           Port as port,
+          Zone as zone,
           DatabaseType as databaseType,
           DatabaseName as databaseName,
           ConnectionUsername as connectionUsername,
@@ -49,6 +50,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             .input('systemName', data.systemName)
             .input('serverHost', data.serverHost)
             .input('port', data.port)
+            .input('zone', data.zone)
             .input('databaseName', data.databaseName)
             .input('databaseType', data.databaseType)
             .input('connectionUsername', data.connectionUsername)
@@ -57,11 +59,11 @@ export async function POST(request: Request): Promise<NextResponse> {
             .input('ownerContact', data.ownerContact)
             .query(`
                 INSERT INTO IT_ManagementDB.dbo.DatabaseInventory (
-                    SystemName, ServerHost, Port, DatabaseName, 
+                    SystemName, ServerHost, Port, Zone,DatabaseName, 
                     DatabaseType, ConnectionUsername, CredentialReference,
                     PurposeNotes, OwnerContact
                 ) VALUES (
-                    @systemName, @serverHost, @port, @databaseName,
+                    @systemName, @serverHost, @port, @zone, @databaseName,
                     @databaseType, @connectionUsername, @credentialReference,
                     @purposeNotes, @ownerContact
                 );

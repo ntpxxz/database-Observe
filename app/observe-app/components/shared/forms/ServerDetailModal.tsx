@@ -1,26 +1,33 @@
-import React, { FC } from 'react';
-import { X } from 'lucide-react';
+import { FC } from 'react';
 import { DatabaseInventory } from '@/types';
+import { X } from 'lucide-react';
 
 interface ServerDetailModalProps {
-  server: DatabaseInventory;
-  onClose: () => void;
+    isOpen: boolean;
+    server: DatabaseInventory | null;
+    onClose: () => void;
 }
 
-export const ServerDetailModal: FC<ServerDetailModalProps> = ({ server, onClose }) => {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-slate-800 p-6 rounded-xl w-full max-w-2xl">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-semibold text-white">
-            Server Details: {server.systemName}
-          </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
-            <X size={20} />
-          </button>
-        </div>
+// Simple DetailItem component definition
+const DetailItem: FC<{ label: string; value: string | number | null | undefined }> = ({ label, value }) => (
+    <div className="flex flex-col">
+        <span className="text-xs text-slate-400">{label}</span>
+        <span className="text-sm text-white">{value ?? '-'}</span>
+    </div>
+);
 
-        <div className="space-y-4">
+export const ServerDetailModal: FC<ServerDetailModalProps> = ({ isOpen, server, onClose }) => {
+    if (!isOpen || !server) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+            <div className="bg-slate-800 p-6 rounded-xl w-full max-w-lg border border-slate-700">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold text-white">{server.systemName} - Details</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={20} /></button>
+                </div>
+
+                        <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <DetailItem label="System Name" value={server.systemName} />
             <DetailItem label="Database Type" value={server.databaseType} />
@@ -43,22 +50,7 @@ export const ServerDetailModal: FC<ServerDetailModalProps> = ({ server, onClose 
           </div>
         </div>
 
-        <div className="mt-8 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-slate-700 text-white hover:bg-slate-600"
-          >
-            Close
-          </button>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
-
-const DetailItem: FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div>
-    <dt className="text-sm font-medium text-slate-400">{label}</dt>
-    <dd className="mt-1 text-sm text-white">{value || 'N/A'}</dd>
-  </div>
-);
