@@ -1,48 +1,82 @@
+// src/components/ManagementPanel.tsx
+
 import React, { FC, useState } from 'react';
 import { Database, Plus, Edit, Trash2 } from 'lucide-react';
 import { DatabaseInventory } from '@/types';
-import { ServerFormModal } from './ServerFormModal';
+import { EditDatabaseModal } from './EditDatabaseModal';
 import { ServerDetailModal } from './ServerDetailModal';
+import { AddDatabaseModal } from './AddDatabaseModal';
 
 interface ManagementPanelProps {
-  servers: DatabaseInventory[];
-  onAdd: (serverData: Omit<DatabaseInventory, 'inventoryID'>) => Promise<void>;
-  onEdit: (serverData: DatabaseInventory) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+    servers: DatabaseInventory[];
+    onAdd: (serverData: Omit<DatabaseInventory, 'inventoryID'>) => Promise<void>;
+    onEdit: (serverData: DatabaseInventory) => Promise<void>;
+    onDelete: (id: string) => Promise<void>;
+    onRefresh?: () => Promise<void>;
 }
 
-export const ManagementPanel: FC<ManagementPanelProps> = ({ servers, onAdd, onEdit, onDelete }) => {
-    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+
+export const ManagementPanel: FC<ManagementPanelProps> = ({ 
+    servers, 
+    onAdd, 
+    onEdit, 
+    onDelete,
+    onRefresh
+}) => {
     const [selectedServer, setSelectedServer] = useState<DatabaseInventory | null>(null);
     const [viewingServer, setViewingServer] = useState<DatabaseInventory | null>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+    const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);   
 
-    // แก้ไขการจัดการ event handlers
-    const handleOpenModal = (e?: React.MouseEvent, server?: DatabaseInventory) => {
-        e?.stopPropagation(); // ป้องกันการ bubble ขึ้นไปที่ row
-        setSelectedServer(server || null);
-        setIsModalOpen(true);
+    const handleOpenEditModal = (e: React.MouseEvent, server: DatabaseInventory) => {
+        e.stopPropagation(); // Prevent row click
+        setSelectedServer(server);
+        setIsEditModalOpen(true);
     };
 
-    const handleCloseModal = () => {
+    const handleCloseEditModal = () => {
+        setIsEditModalOpen(false);
         setSelectedServer(null);
-        setIsModalOpen(false);
-    };
-
-    const handleSubmit = async (data: any) => {
-        try {
-            if (selectedServer?.inventoryID) {
-                await onEdit({ ...data, inventoryID: selectedServer.inventoryID });
-            } else {
-                await onAdd(data);
-            }
-            handleCloseModal();
-        } catch (error) {
-            console.error('Failed to submit:', error);
-        }
     };
 
     const handleRowClick = (server: DatabaseInventory) => {
         setViewingServer(server);
+    };
+    const handleEdit = async (data: DatabaseInventory) => {
+        try {
+            const response = await fetch(`/api/inventory/${data.inventoryID}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+
+            if (!response.ok) {
+                const errorBody = await response.json();
+                throw new Error(errorBody.message || 'Failed to update.');
+            }
+            
+            // เมื่อสำเร็จ ต้องหาวิธีรีเฟรชข้อมูล
+            // วิธีที่ง่ายที่สุด (แต่ไม่ดีที่สุด) คือการ reload หน้า
+            window.location.reload(); 
+
+        } catch (error) {
+            alert(`Operation Failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            throw error; // ส่ง error กลับไปให้ modal แสดงผล
+        }
+    };
+
+    const handleDeleteClick = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (window.confirm('Are you sure you want to delete this database?')) {
+            try {
+                await onDelete(id);
+                window.alert('Database deleted successfully!');
+                if (onRefresh) await onRefresh();
+            } catch (error) {
+                console.error('Failed to delete:', error);
+                window.alert('Delete operation failed.');
+            }
+        }
     };
 
     return (
@@ -54,7 +88,7 @@ export const ManagementPanel: FC<ManagementPanelProps> = ({ servers, onAdd, onEd
                     Database Inventory
                 </h3>
                 <button 
-                    onClick={() => handleOpenModal()}
+                    onClick={() => setIsAddModalOpen(true)}
                     className="flex items-center py-2 px-4 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold text-sm transition-colors"
                 >
                     <Plus size={16} className="mr-2" />
@@ -90,17 +124,14 @@ export const ManagementPanel: FC<ManagementPanelProps> = ({ servers, onAdd, onEd
                                 <td className="px-4 py-3">
                                     <div className="flex justify-center gap-2">
                                         <button 
-                                            onClick={(e) => handleOpenModal(e, server)} // เพิ่ม event parameter
+                                            onClick={(e) => handleOpenEditModal(e, server)}
                                             className="p-2 text-slate-400 hover:text-sky-400" 
                                             title="Edit Database"
                                         >
                                             <Edit size={16} />
                                         </button>
                                         <button 
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onDelete(String(server.inventoryID));
-                                            }} 
+                                            onClick={(e) => handleDeleteClick(e, server.inventoryID)} 
                                             className="p-2 text-slate-400 hover:text-red-400" 
                                             title="Delete Database"
                                         >
@@ -115,19 +146,37 @@ export const ManagementPanel: FC<ManagementPanelProps> = ({ servers, onAdd, onEd
             </div>
 
             {/* Modals */}
-            {isModalOpen && (
-                <ServerFormModal
-                    server={selectedServer}
-                    onSubmit={handleSubmit}
-                    onClose={handleCloseModal} isOpen={true}                />
-            )}
-
             {viewingServer && (
                 <ServerDetailModal
                     server={viewingServer}
                     onClose={() => setViewingServer(null)}
                 />
             )}
+
+            {isAddModalOpen && (
+                <AddDatabaseModal
+                    // ✅ CORRECTED: Use 'onSubmit' which the modal expects
+                    onSubmit={async (data) => {
+                        // Use the 'onAdd' function passed from the parent component
+                        await onAdd(data);
+                        // Refresh data if the function is provided
+                        if (onRefresh) await onRefresh();
+                    }}
+                    onClose={() => setIsAddModalOpen(false)}
+                />
+            )}
+
+             { isEditModalOpen && selectedServer && (
+                <EditDatabaseModal
+                    server={selectedServer}
+                    // ✅ ส่งฟังก์ชัน handleEdit ที่เราเพิ่งสร้างขึ้นไปให้ modal
+                    onEdit={handleEdit}
+                    onClose={() => setIsEditModalOpen(false)}
+                />
+            )}
+            
+            
         </div>
+        
     );
 };

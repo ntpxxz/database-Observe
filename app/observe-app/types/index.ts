@@ -60,6 +60,7 @@ export interface PerformanceInsightsTableProps {
 
 export interface ServerFormModalProps {
   isOpen: boolean;
+  
   onClose: () => void;
   onSave: (serverData: ServerFormData) => void;
   serverToEdit: Server | Partial<ServerFormData> | null;

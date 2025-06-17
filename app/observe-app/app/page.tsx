@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { KPIWidget } from '@/components/dashboard/KPIWidget';
 import { PerformanceInsightsTable } from '@/components/dashboard/PerformanceInsightsTable';
-import { ManagementPanel } from '@/components/shared/ManagementPanel';
-import { NetworkScannerPanel } from '@/components/shared/NetworkScannerPanel';
+import { ManagementPanel } from '@/components/shared/forms/ManagementPanel';
+import { NetworkScannerPanel } from '@/components/shared/forms/NetworkScannerPanel';
 import { QueryAnalysisModal } from '@/components/dashboard/QueryAnalysisModal';
-import { ServerFormModal } from '@/components/shared/ServerFormModal';
 import { Server, ServerMetrics, ServerFormData, PerformanceInsight, DatabaseInventory } from '@/types/index';
 import { Cpu, MemoryStick, ShieldCheck, Activity, BarChart, Settings, Wifi, AlertCircle, TrendingUp } from 'lucide-react';
 
@@ -87,26 +86,35 @@ export default function Home() {
         setActiveTab('dashboard');
     };
 
-    const handleSaveServer = async (serverData: ServerFormData) => {
-        const method = 'id' in serverData && serverData.id ? 'PUT' : 'POST';
-        const endpoint = method === 'PUT' ? `${API_URL}/servers/${serverData.id}` : `${API_URL}/servers`;
-        
+    const handleAddServer = async (serverData: Omit<DatabaseInventory, 'inventoryID'>) => {
         try {
-            const response = await fetch(endpoint, {
-                method,
+            const response = await fetch('/api/inventory', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(serverData)
+                body: JSON.stringify(serverData),
             });
-            if (!response.ok) {
-                 const errorBody = await response.json();
-                 throw new Error(errorBody.message || 'Failed to save server');
-            }
-            await fetchServers();
+            if (!response.ok) throw new Error('Failed to add server');
             setIsFormModalOpen(false);
-            setEditingServer(null);
+            fetchServers();
         } catch (err: any) {
             console.error(err);
-            alert(`Error saving server: ${err.message}`);
+            alert(`Error adding server: ${err.message}`);
+        }
+    };
+    const handleEditServer = async (serverData: ServerFormData) => {
+        try {
+            const response = await fetch(`/api/inventory/${editingServer?.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(serverData),
+            });
+            if (!response.ok) throw new Error('Failed to update server');
+            setIsFormModalOpen(false);
+            setEditingServer(null);
+            fetchServers();
+        } catch (err: any) {
+            console.error(err);
+            alert(`Error updating server: ${err.message}`);
         }
     };
 
@@ -130,8 +138,8 @@ export default function Home() {
         setIsFormModalOpen(true);
     };
 
-    const openEditModal = (server: Server) => {
-        setEditingServer(server);
+    const openEditModal = async (serverData: DatabaseInventory): Promise<void> => {
+        setEditingServer(serverData);
         setIsFormModalOpen(true);
     };
     
@@ -142,13 +150,24 @@ export default function Home() {
 
     const activeServer = servers.find(s => s.id === activeServerId);
 
+    const refreshData = async () => {
+        try {
+            const response = await fetch('/api/inventory');
+            if (!response.ok) throw new Error('Failed to fetch data');
+            const data = await response.json();
+            // Update your state here
+            setServers(data.data);
+        } catch (error) {
+            console.error('Failed to refresh data:', error);
+        }
+    };
+
     if (isLoading) return <div>Loading...</div>;
     if (error) return <div className="error">{error}</div>;
 
     return (
         <div className="bg-slate-900 text-slate-300 min-h-screen flex font-sans">
             <Sidebar servers={servers} activeServerId={activeServerId} onSelectServer={handleSelectServer} />
-            <ServerFormModal isOpen={isFormModalOpen} onClose={() => setIsFormModalOpen(false)} onSave={handleSaveServer} serverToEdit={editingServer} />
             <QueryAnalysisModal isOpen={isAnalysisModalOpen} onClose={() => setIsAnalysisModalOpen(false)} query={selectedQuery} />
 
             <main className="flex-1 p-8 overflow-y-auto">
@@ -192,7 +211,7 @@ export default function Home() {
                     </>
                 )}
                 
-                {activeTab === 'manage' && <ManagementPanel servers={servers} onAdd={openAddModal} onEdit={openEditModal} onDelete={handleDeleteServer} />}
+                {activeTab === 'manage' && <ManagementPanel servers={servers} onAdd={handleAddServer} onEdit={openEditModal} onEditServer={handleEditServer} onDelete={handleDeleteServer} onRefresh={refreshData} />}
                 {activeTab === 'scan' && <NetworkScannerPanel onAdd={openAddModal} />}
             </main>
         </div>
