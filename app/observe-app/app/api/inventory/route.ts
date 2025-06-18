@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getConnection } from '@/lib/db';
+import { getConnection} from '@/lib/db';
 import { DatabaseInventory } from '@/types';
 
 export async function GET(): Promise<NextResponse> {

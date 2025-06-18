@@ -1,48 +1,55 @@
 import { createPool, Pool as MySqlPool, RowDataPacket } from 'mysql2/promise';
-import { Driver, Metrics, AnyPool } from '@/types/index';
+import { Driver as IDriver, Metrics, AnyPool, PerformanceInsight } from '@/types';
 
-const mysqlDriver: Driver = {
-    connect: async (config: any): Promise<AnyPool> => {
-        return createPool(config);
-    },
-
-    disconnect: async (pool: AnyPool): Promise<void> => {
-        await (pool as MySqlPool).end();
-    },
-
+const mysqlDriver: IDriver = {
+    connect: async (config: any): Promise<AnyPool> => createPool(config),
+    disconnect: async (pool: AnyPool): Promise<void> => await (pool as MySqlPool).end(),
     getMetrics: async (pool: AnyPool): Promise<Partial<Metrics>> => {
         const mysqlPool = pool as MySqlPool;
         
-        const METRIC_QUERIES = {
-            active_connections: "SELECT COUNT(*) AS value FROM information_schema.processlist WHERE command != 'Sleep'",
-            slow_queries: `
+        const QUERIES = {
+            connections: "SELECT COUNT(*) AS value FROM information_schema.processlist WHERE command != 'Sleep'",
+            by_total_time: `
                 SELECT 
-                    query_text AS query, 
-                    avg_timer_wait/1000000000 AS duration, 
-                    exec_count AS count 
+                    query_text as query, 
+                    total_latency, 
+                    exec_count as calls
                 FROM sys.statement_analysis 
-                WHERE avg_timer_wait > 0 
-                ORDER BY avg_timer_wait DESC 
-                LIMIT 10;
-            `
+                WHERE avg_timer_wait > 0 ORDER BY total_latency DESC LIMIT 10;`,
+            by_io: `
+                SELECT 
+                    query_text as query, 
+                    rows_sent, 
+                    exec_count as calls 
+                FROM sys.statement_analysis WHERE rows_sent > 0 ORDER BY rows_sent DESC LIMIT 10;`
         };
-
-        const [connectionsRes, slowQueriesRes] = await Promise.all([
-            mysqlPool.query(METRIC_QUERIES.active_connections).catch((e: any) => [{ error: true, ...e }]),
-            mysqlPool.query(METRIC_QUERIES.slow_queries).catch(() => [{ error: true, message: "Could not fetch slow queries. Ensure the Performance Schema is enabled on the target MySQL server." }]),
-        ]);
         
-        const connectionsRows = connectionsRes[0] as RowDataPacket[];
-        const slowQueriesRowsResult = slowQueriesRes[0];
+        try {
+            const [connRes, timeRes, ioRes] = await Promise.all([
+                mysqlPool.query(QUERIES.connections),
+                mysqlPool.query(QUERIES.by_total_time),
+                mysqlPool.query(QUERIES.by_io),
+            ]);
 
-        const performanceInsights = 'error' in slowQueriesRowsResult ? 
-            { error: (slowQueriesRowsResult as any).message } : 
-            (slowQueriesRowsResult as RowDataPacket[]).map((r, i) => ({ ...r, id: i, type: 'Slow' }));
-
-        return {
-            kpi: { connections: connectionsRows?.[0]?.value ?? 'N/A' },
-            performanceInsights: performanceInsights
-        };
+            const connections = (connRes[0] as RowDataPacket[])[0]?.value ?? 0;
+            
+            return {
+                kpi: { connections },
+                performanceInsights: {
+                    byTotalTime: timeRes[0] as PerformanceInsight[],
+                    byIo: ioRes[0] as PerformanceInsight[],
+                }
+            };
+        } catch (err: any) {
+            console.error("MySQL metrics error:", err.message);
+            return { 
+                performanceInsights: { 
+                    byTotalTime: [], 
+                    byIo: [],
+                    error: "Failed to fetch metrics. Please ensure the Performance Schema is enabled on the target server."
+                } 
+            };
+        }
     },
 };
 

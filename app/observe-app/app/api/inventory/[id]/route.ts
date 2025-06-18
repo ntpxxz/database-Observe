@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getConnection, sql } from '@/lib/db';
+import { getConnection, sql, } from '@/lib/db';
 import { DatabaseInventory } from '@/types'
 
 export async function GET(
@@ -60,6 +60,7 @@ export async function PUT(
                     SystemName = @systemName,
                     ServerHost = @serverHost,
                     Port = @port,
+                    @Zone = @zone,
                     DatabaseName = @databaseName,
                     DatabaseType = @databaseType,
                     ConnectionUsername = @connectionUsername,

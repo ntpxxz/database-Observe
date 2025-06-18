@@ -1,58 +1,38 @@
 import { NextResponse } from 'next/server';
-import sql from 'mssql';
-import { pool } from '@/lib/db';
+import { queryAppDb, sql, getConnection } from '@/lib/db';
+import { DatabaseInventoryFormData } from '@/types';
 
-export async function GET(): Promise<NextResponse> {
-  try {
-    // ดึงข้อมูลจาก DatabaseInventory แต่เพิ่มการตรวจสอบสถานะ
-    const result = await pool!.request()
-      .query(`
-        SELECT 
-          InventoryID as id,
-          SystemName as name,
-          ServerHost as host,
-          Port as port,
-          DatabaseType as type,
-          DatabaseName as database,
-          ConnectionUsername as username
-        FROM IT_ManagementDB.dbo.DatabaseInventory
-      `);
+export async function GET() {
+    try {
+        const result = await queryAppDb('SELECT * FROM servers ORDER BY systemName ASC');
+        return NextResponse.json({ data: result.recordset });
+    } catch (error: any) {
+        return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
+    }
+}
 
-    // เพิ่มการตรวจสอบสถานะของแต่ละ server
-    const serversWithStatus = await Promise.all(
-      result.recordset.map(async (server) => {
-        try {
-          // ทดสอบการเชื่อมต่อกับ server
-          await pool.request()
-            .input('host', sql.NVarChar, server.host)
-            .input('port', sql.Int, server.port)
-            .query('SELECT 1');
-          
-          return {
-            ...server,
-            status: 'active',
-            lastChecked: new Date().toISOString()
-          };
-        } catch (error) {
-          return {
-            ...server,
-            status: 'inactive',
-            lastChecked: new Date().toISOString()
-          };
-        }
-      })
-    );
+export async function POST(request: Request) {
+    try {
+        const body: DatabaseInventoryFormData = await request.json();
+        
+        // In a real app, use bcrypt to hash the password
+        const password_encrypted = body.password; 
 
-    return NextResponse.json({
-      success: true,
-      data: serversWithStatus
-    });
+        const pool = await getConnection();
+        const request = pool.request();
+        
+        request.input('name', sql.VarChar, body.systemName);
+        request.input('zone', sql.VarChar, body.zone);
+        // ... add all other inputs
+        
+        const result = await request.query(`
+            INSERT INTO servers (systemName, zone, ...) 
+            VALUES (@name, @zone, ...); 
+            SELECT * FROM servers WHERE inventoryID = SCOPE_IDENTITY();
+        `);
 
-  } catch (err) {
-    console.error('Failed to fetch servers:', err);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch server list' },
-      { status: 500 }
-    );
-  }
+        return NextResponse.json(result.recordset[0], { status: 201 });
+    } catch (error: any) {
+        return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
+    }
 }

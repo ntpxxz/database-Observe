@@ -1,82 +1,42 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { pool } from '@/lib/db';
+import { NextResponse } from 'next/server';
+import { queryAppDb } from '@/lib/db';
+import { DatabaseInventory } from '@/types';
 
-// PUT and DELETE for /api/servers/[id]
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { id } = req.query;
-
-  // PUT /api/servers/[id] - update inventory data (adjust table name if needed)
-  if (req.method === 'PUT') {
+export async function PUT(request: Request, { params }: { params: { id: string } }) {
+    const { id } = params;
     try {
-      const { name, zone, db_type, ip_address, db_port, db_user } = req.body;
-      const result = await pool.query(
-        `UPDATE inventory 
-         SET name = $1, 
-             zone = $2, 
-             db_type = $3, 
-             ip_address = $4, 
-             db_port = $5, 
-             db_user = $6, 
-             updated_at = NOW() 
-         WHERE id = $7 RETURNING *`,
-        [name, zone, db_type, ip_address, db_port, db_user, id]
-      );
+        const body: Omit<DatabaseInventory, 'id' | 'inventoryID'> = await request.json();
+        
+        // This is a simplified update. A more robust version would dynamically build the SET clause.
+        const result = await queryAppDb(
+            `UPDATE servers 
+             SET systemName = @systemName, zone = @zone, serverHost = @serverHost, port = @port, 
+                 databaseName = @databaseName, databaseType = @databaseType, 
+                 connectionUsername = @connectionUsername, purposeNotes = @purposeNotes, 
+                 ownerContact = @ownerContact, updated_at = GETDATE()
+             WHERE inventoryID = @id`,
+            { ...body, id }
+        );
+        
+        if (result.rowsAffected[0] === 0) {
+            return NextResponse.json({ message: 'Server not found' }, { status: 404 });
+        }
+        return NextResponse.json({ message: 'Update successful' });
 
-      if (result.rowCount === 0) {
-        return res.status(404).json({ message: 'Inventory record not found' });
-      }
-      return res.status(200).json(result.rows[0]);
-    } catch (err: any) {
-      return res.status(500).json({ message: `Server Error: ${err.message}` });
+    } catch (error: any) {
+        return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
     }
-  }
-  // DELETE /api/servers/[id] - delete inventory record
-  else if (req.method === 'DELETE') {
-    try {
-      const result = await pool.query(
-        `DELETE FROM inventory WHERE id = $1`, 
-        [id]
-      );
-      if (result.rowCount === 0) {
-        return res.status(404).json({ message: 'Inventory record not found' });
-      }
-      return res.status(204).end();
-    } catch (err: any) {
-      return res.status(500).json({ message: `Server Error: ${err.message}` });
-    }
-  }
-  // Method Not Allowed
-  else {
-    res.setHeader('Allow', ['PUT', 'DELETE']);
-    return res.status(405).end(`Method ${req.method} Not Allowed`);
-  }
 }
 
-// GET for /api/servers/[id] - fetch inventory record
-export async function GET(
-  _request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const result = await pool.query(
-      `SELECT * FROM inventory WHERE id = $1`,
-      [params.id]
-    );
-
-    if (!result.rowCount) {
-      return new Response(JSON.stringify({ message: 'Inventory record not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+    const { id } = params;
+    try {
+        const result = await queryAppDb('DELETE FROM servers WHERE inventoryID = @id', { id });
+        if (result.rowsAffected[0] === 0) {
+            return NextResponse.json({ message: 'Server not found' }, { status: 404 });
+        }
+        return new Response(null, { status: 204 }); // No Content
+    } catch (error: any) {
+        return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
     }
-    return new Response(JSON.stringify(result.rows[0]), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  } catch (err) {
-    return new Response(JSON.stringify({ message: 'Database error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
   }
-}

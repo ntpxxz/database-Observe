@@ -8,7 +8,7 @@ import { ServerDetailModal } from '@/components/shared/forms/ServerDetailModal';
 import { DatabaseInventory, DatabaseInventoryFormData } from '@/types';
 import { Sidebar } from '@/components/layout/Sidebar'; 
 import { AlertCircle } from 'lucide-react';
-
+import { ServerDetailView } from '@/components/dashboard/ServerDetailView';
 // Custom Hook for Server Inventory Management
 const useInventoryManager = (onSuccess?: () => void) => {
     const [servers, setServers] = useState<DatabaseInventory[]>([]);
@@ -41,10 +41,8 @@ const useInventoryManager = (onSuccess?: () => void) => {
 
     const addServer = async (serverData: DatabaseInventoryFormData) => {
         const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(serverData) });
-        
         if (!response.ok) throw new Error('Failed to add server');
         alert('Server added successfully');
-     
         await fetchServers();
         onSuccess?.();
     };
@@ -76,34 +74,35 @@ const Home: FC = () => {
     // Custom hook for all backend logic
     const { servers, isLoading, error, addServer, editServer, deleteServer } = useInventoryManager(() => setModal({ type: null, data: null }));
     
-    const activeServer = null; // Placeholder for dashboard view
-
+    const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(null);
     return (
         <div className="flex font-sans bg-slate-950 text-slate-300 min-h-screen">
-            <Sidebar 
-                servers={servers}
-                activeServerId={activeServer ? activeServer.inventoryID : null}
-                activeView="manage" onSelectServer={function (id: string): void {
-                    throw new Error('Function not implemented.');
-                } } onSetView={function (view: 'dashboard' | 'manage' | 'scan'): void {
-                    throw new Error('Function not implemented.');
-                } }            />
-            <main className="flex-1 p-4 md:p-8">
-                <h1 className="text-3xl font-bold mb-6 text-white">Database Inventory</h1>
-                {error && <div className="text-red-400 p-3 bg-red-500/10 rounded-lg mb-4 flex items-center gap-2"><AlertCircle size={16} />{error}</div>}
+             <Sidebar 
+                servers={servers} 
+                activeServer={activeServer}
+                onSelectServer={setActiveServer} // Pass the setter function directly
+            />
+            <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+                {isLoading && <p className="text-center py-20 text-slate-400">Loading Inventory...</p>}
+                {error && <div className="text-red-400 p-3 bg-red-500/10 rounded-lg flex items-center gap-2"><AlertCircle size={16} />{error}</div>}
                 
-                {isLoading ? (
-                    <p className="text-center py-20 text-slate-400">Loading Inventory...</p>
-                ) : (
+                {!isLoading && !error && (
+                    <>
+                        {activeServer ? (
+                            // If a server is active, show its detail dashboard
+                            <ServerDetailView server={activeServer} />
+                        ) : (
                     <ManagementPanel
                         servers={servers}
                         onOpenAddModal={() => setModal({ type: 'add', data: null })}
                         onOpenEditModal={(server) => setModal({ type: 'edit', data: server })}
                         onOpenDetailModal={(server) => setModal({ type: 'detail', data: server})}
-                        onDelete={deleteServer}
-                    />
+                           />
+                        )}
+                    </>
                 )}
             </main>
+
 
             {/* Modals are rendered here, controlled by the page's state */}
             <AddDatabaseModal 
