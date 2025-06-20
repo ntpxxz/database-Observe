@@ -1,6 +1,6 @@
 import React, { FC } from 'react';
 import { Database, Plus, Edit, Trash2 } from 'lucide-react';
-import { DatabaseInventory, DatabaseInventoryFormData } from '@/types';
+import { DatabaseInventory } from '@/types';
 
 // This component is now "dumb" and only receives props. It doesn't manage its own state.
 interface ManagementPanelProps {

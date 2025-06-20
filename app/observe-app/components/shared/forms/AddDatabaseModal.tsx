@@ -1,7 +1,6 @@
 import React, { FC, useState, useEffect } from "react";
 import { DatabaseInventoryFormData, DbType } from "@/types";
 import { X, CheckCircle, AlertTriangle } from "lucide-react";
-import error from "next/error";
 
 interface AddDatabaseModalProps {
   isOpen: boolean;
@@ -19,16 +18,20 @@ export const AddDatabaseModal: FC<AddDatabaseModalProps> = ({
   const getInitialState = (): DatabaseInventoryFormData => ({
     systemName: "",
     serverHost: "",
-    port: 1433,
+    port: 1433, // default MSSQL
     databaseName: "",
-    databaseType: "MSSQL",
     zone: "",
+    databaseType: "MSSQL", // default
     connectionUsername: "",
     credentialReference: "",
     purposeNotes: "",
-    ownerContact: "",
-    password: "",
-  });
+    ownerContact: "",  });
+
+  const defaultPorts: Record<DbType, number> = {
+    MSSQL: 1433,
+    POSTGRES: 5432,
+    MYSQL: 3306,
+  };
 
   const [formData, setFormData] = useState<DatabaseInventoryFormData>(
     getInitialState()
@@ -50,29 +53,52 @@ export const AddDatabaseModal: FC<AddDatabaseModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setTestResult(null);
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === "port" ? Number(value) : (value as DbType),
-    }));
+
+    if (name === "databaseType") {
+      setFormData(prev => ({
+        ...prev,
+        databaseType: value as DbType,
+        port: defaultPorts[value as DbType],
+      }));
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        [name]: name === "port" ? Number(value) : value,
+      }));
+    }
   };
+  
 
   const handleTestConnection = async () => {
     setIsTesting(true);
     setTestResult(null);
+
+    // ตรวจสอบค่าที่จำเป็น (เช็ค serverHost.trim() ด้วย)
+    if (
+      !formData.serverHost ||
+      !formData.serverHost.trim() ||
+      !formData.databaseType ||
+      !formData.port
+    ) {
+      setTestResult({ success: false, message: "กรุณากรอกข้อมูลให้ครบถ้วน" });
+      setIsTesting(false);
+      return;
+    }
+
     try {
       const response = await fetch("/api/connections/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          serverHost: formData.serverHost.trim(), // ส่งแบบ trim ไปเสมอ
+        }),
       });
       const result = await response.json();
+
       setTestResult(result);
     } catch (error) {
       setTestResult({ success: false, message: "An unknown error occurred." });
@@ -89,7 +115,8 @@ export const AddDatabaseModal: FC<AddDatabaseModalProps> = ({
     }
     setIsSubmitting(true);
     try {
-      await onAdd(formData);
+      await onAdd(formData);      
+      setFormData(getInitialState());
       onClose();
     } catch (err: any) {
       alert(`Failed to add database: ${err.message}`);

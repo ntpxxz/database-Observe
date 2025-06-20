@@ -9,6 +9,13 @@ interface EditDatabaseModalProps {
   onEdit: (data: DatabaseInventory) => Promise<void>;
 }
 
+const defaultPorts = {
+  'MSSQL': 1433,
+  'POSTGRES': 5432,
+  'MYSQL': 3306
+  
+};
+
 export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({ isOpen, server, onClose, onEdit }) => {
   const [formData, setFormData] = useState<Partial<ServerFormData>>({});
   const [isTesting, setIsTesting] = useState(false);
@@ -17,37 +24,117 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({ isOpen, server, 
 
   useEffect(() => {
     if (server && isOpen) {
-      setFormData({ ...server, password: '' });
+      // Log initial server data for debugging
+      console.log('Initial server data:', server);
+      
+      // Initialize with strict validation
+      const initialData = {
+        ...server,
+        serverHost: server.serverHost || '',  // Ensure serverHost exists
+        databaseType: server.databaseType || 'MSSQL',
+        port: server.port || defaultPorts[server.databaseType || 'MSSQL'],
+        password: ''
+      };
+      
+      console.log('Setting initial form data:', initialData);
+      setFormData(initialData);
       setTestResult(null);
       setIsSubmitting(false);
     }
   }, [server, isOpen]);
 
-  if (!isOpen || !server) return null;
+  // Add this effect to update port when database type changes
+  useEffect(() => {
+    if (formData.databaseType) {
+      setFormData(prev => ({
+        ...prev,
+        port: defaultPorts[prev.databaseType as keyof typeof defaultPorts] || prev.port
+      }));
+    }
+  }, [formData.databaseType]);
 
+  if (!isOpen || !server) return null;
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setTestResult(null);
-    setFormData(prev => ({ ...prev, [name]: name === 'port' ? Number(value) : value }));
-  };
 
+    // Special handling for serverHost
+    if (name === 'serverHost' && !value.trim()) {
+      return; // Don't update if empty
+    }
+
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'port' ? Number(value) : value.trim()
+    }));
+  };
+  
+  
+console.log('formData', formData);
   const handleTestConnection = async () => {
     setIsTesting(true);
     setTestResult(null);
+
+    // Validate all required fields
+    const requiredFields = {
+      serverHost: formData.serverHost,
+      databaseType: formData.databaseType,
+      port: formData.port,
+      databaseName: formData.databaseName,
+      connectionUsername: formData.connectionUsername,
+      credentialReference: formData.credentialReference
+    };
+
+    // Check for missing fields
+    const missingFields = Object.entries(requiredFields)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
+      setTestResult({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(', ')}`
+      });
+      setIsTesting(false);
+      return;
+    }
+
     try {
-        const payloadForTest = {
-            ...server, // Start with existing data
-            ...formData, // Overwrite with any new changes from the form
-        };
+      // Create payload with explicit type checking
+      const payloadForTest = {
+        serverHost: formData.serverHost!.trim(),
+        port: Number(formData.port),
+        databaseName: formData.databaseName!,
+        databaseType: formData.databaseType!,
+        connectionUsername: formData.connectionUsername!,
+        credentialReference: formData.credentialReference!
+      };
+
+      // Log payload for debugging (exclude sensitive data)
+      console.log('Test connection payload:', {
+        ...payloadForTest,
+        credentialReference: '***REDACTED***'
+      });
+
       const response = await fetch('/api/connections/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payloadForTest),
       });
+
       const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Connection test failed');
+      }
+      
+
       setTestResult(result);
     } catch (error) {
-      setTestResult({ success: false, message: `Connection test failed: ${error instanceof Error ? error.message : 'Unknown error'}` });
+      console.error('Connection test error:', error);
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
     } finally {
       setIsTesting(false);
     }
@@ -55,15 +142,38 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({ isOpen, server, 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate all required fields
+    if (!formData.serverHost?.trim() || !formData.databaseType || !formData.port) {
+      alert('Server host, database type, and port are required');
+      return;
+    }
+    if (!testResult?.success) {
+      alert("Please test the connection successfully before adding.");
+      return;
+    }
     setIsSubmitting(true);
+    
     try {
-        const updatedData = { ...server, ...formData };
-        await onEdit(updatedData);
-        onClose();
+      const updatedData = {
+        ...server,
+        ...formData,
+        serverHost: formData.serverHost.trim(),
+        port: Number(formData.port)
+      };
+      
+      console.log('Submitting data:', {
+        ...updatedData,
+        credentialReference: '***REDACTED***'
+      });
+      
+      await onEdit(updatedData);
+      onClose();
     } catch (err: any) {
-        alert(`Failed to update database: ${err.message}`);
+      console.error('Update error:', err);
+      alert(`Failed to update database: ${err.message}`);
     } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -163,7 +273,7 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({ isOpen, server, 
               disabled={isSubmitting}
             >
               <option value="MSSQL">MSSQL</option>
-              <option value="POSTGRES">PostgreSQL</option>
+              <option value="POSTGRES">PostgresSQL</option>
               <option value="MYSQL">MySQL</option>
             </select>
           </div>

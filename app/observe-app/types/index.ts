@@ -15,28 +15,46 @@ export interface PerformanceInsight {
   error?: string;
 }
 
+// First, standardize the database types
+export type DbType = 'MSSQL' | 'POSTGRES' | 'MYSQL';
+
+// Create a base connection config type
+export interface DatabaseConnectionConfig {
+  serverHost: string;
+  port: number;
+  databaseName: string;
+  databaseType: DbType;
+  connectionUsername: string;
+  credentialReference: string;
+  options?: {
+    encrypt?: boolean;
+    trustServerCertificate?: boolean;
+    enableArithAbort?: boolean;
+  };
+}
+
+// Update ServerConfig to remove duplicates
+export interface ServerConfig extends DatabaseConnectionConfig {
+  id?: string;
+  name: string;
+  zone?: string;
+  type: DbType;  // Use DbType instead of string literal
+  updated_at?: string;
+}
+
 export interface Server {
-  [x: string]: Key | null | undefined;
-  db_type: ReactNode;
-  ip_address: ReactNode;
-  db_port: ReactNode;
-  db_user: ReactNode;
   id: number;
   name: string;
-  host: string;
+  serverHost: string;  // Change host to serverHost for consistency
   port: number;
   zone?: string;
-  type: string;
-  database: string;
-  username: string;
+  type: DbType;  // Use DbType
+  databaseName: string;  // Change database to databaseName
+  connectionUsername: string;  // Change username to connectionUsername
   status: 'active' | 'inactive';
 }
 
-export interface ServerFormData {
-  name: string;
-  host: string;
-  port: number;
-}
+export type ServerFormData = Omit<DatabaseInventory, 'inventoryID' | 'createdDate' | 'updated_at'>;
 
 // --- Props for UI Components ---
 
@@ -96,66 +114,29 @@ export interface Metrics {
   performanceInsights: PerformanceInsight[] | { error: string };
 }
 
-// Database driver interface
+// Update Driver interface to use specific config type
 export interface Driver {
-  connect: (config: any) => Promise<AnyPool>;
+  connect: (config: DatabaseConnectionConfig) => Promise<AnyPool>;
   disconnect: (pool: AnyPool) => Promise<void>;
   getMetrics: (pool: AnyPool) => Promise<Partial<Metrics>>;
-}
-
-export type DbType = 'POSTGRES' | 'MYSQL' | 'MSSQL';
-
-export interface ServerConfig {
-  id?: string;
-  name: string;
-  host: string;
-  port: number;
-  zone?: string;
-  type: 'postgres' | 'mysql' | 'mssql';
-  username: string;
-  password: string;
-  database: string;
-}
-
-export interface ServerResponse {
-  success: boolean;
-  data?: ServerConfig;
-  error?: string;
-}
-export interface ServerMetrics {
-  performanceInsights: PerformanceInsight[] | { error: string; };
-  server: {
-    id: number;
-    name: string;
-    host: string;
-    port: number;
-    type: string;
-    db_name: string;
-  };
-  performance: {
-    cpu_usage: number;
-    memory_usage: number;
-    disk_usage: number;
-    active_connections: number;
-  };
-  status: 'active' | 'inactive';
-  last_checked: string;
+  getQueryAnalysis: (pool: AnyPool) => Promise<QueryAnalysis>;
+  getOptimizationSuggestions:(pool: AnyPool) => Promise<OptimizationSuggestions:>;
 }
 
 export interface DatabaseInventory {
-  id: DatabaseInventory | null;
-  inventoryID?: number;
+  inventoryID: number;
   systemName: string;
   serverHost: string;
   port: number;
-  zone: string;
   databaseName: string;
-  databaseType: string;
+  zone: string;
+  databaseType: DbType;
   connectionUsername: string;
   credentialReference: string;
-  purposeNotes: string;
+  purposeNotes?: string;
   ownerContact: string;
   createdDate?: Date;
+  updated_at?: Date;
 }
 
 export interface DatabaseResponse {
@@ -175,3 +156,73 @@ export interface DatabaseMetrics {
   last_checked: string;
 }
 export type DatabaseInventoryFormData = Omit<DatabaseInventory, 'id' | 'inventoryID'>;
+export interface QueryAnalysis {
+  runningQueries: RunningQuery[];
+  slowQueries: SlowQuery[];
+  blockingQueries: BlockingQuery[];
+  resourceUsage: ResourceUsage[];
+  indexUsage: IndexUsage[];
+  waitStats: WaitStat[];
+}
+
+export interface RunningQuery {
+  sessionId: string;
+  loginName: string;
+  hostName: string;
+  programName: string;
+  status: string;
+  command: string;
+  startTime: Date;
+  elapsedTime: number;
+  cpuTime: number;
+  logicalReads: number;
+  writes: number;
+  query: string;
+}
+
+export interface SlowQuery {
+  query: string;
+  totalExecutionTime: number;
+  avgExecutionTime: number;
+  executionCount: number;
+  totalLogicalReads: number;
+  avgLogicalReads: number;
+  lastExecutionTime: Date;
+}
+
+export interface BlockingQuery {
+  blockingSessionId: string;
+  blockedSessionId: string;
+  blockingQuery: string;
+  blockedQuery: string;
+  waitTime: number;
+  waitType: string;
+}
+
+export interface ResourceUsage {
+  databaseName: string;
+  cpuPercent: number;
+  ioPercent: number;
+  logSpaceUsed: number;
+  tempdbUsage: number;
+}
+
+export interface IndexUsage {
+  tableName: string;
+  indexName: string;
+  userSeeks: number;
+  userScans: number;
+  userLookups: number;
+  userUpdates: number;
+  lastUserSeek: Date;
+  sizeMB: number;
+}
+
+export interface WaitStat {
+  waitType: string;
+  waitingTasksCount: number;
+  waitTimeMs: number;
+  maxWaitTimeMs: number;
+  signalWaitTimeMs: number;
+}
+

@@ -1,13 +1,13 @@
 import sql from 'mssql';
 
 const config: sql.config = {
-  user: process.env.DB_USER || 'sa',
-  password: process.env.DB_PASSWORD || '123456',
-  server: process.env.DB_SERVER || 'localhost',
-  database: process.env.DB_DATABASE || 'IT_ManagementDB',
+  user: process.env.MSSQL_USER || 'sa',
+  password: process.env.MSSQL_PASSWORD || '123456',
+  server: process.env.MSSQL_HOST || 'localhost',
+  database: process.env.MSSQL_DATABASE || 'IT_ManagementDB',
   options: {
     trustServerCertificate: true,
-    encrypt: false, 
+    encrypt: true, 
     enableArithAbort: true
   },
   requestTimeout: 30000,
