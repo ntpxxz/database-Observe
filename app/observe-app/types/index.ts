@@ -120,7 +120,9 @@ export interface Driver {
   disconnect: (pool: AnyPool) => Promise<void>;
   getMetrics: (pool: AnyPool) => Promise<Partial<Metrics>>;
   getQueryAnalysis: (pool: AnyPool) => Promise<QueryAnalysis>;
-  getOptimizationSuggestions:(pool: AnyPool) => Promise<OptimizationSuggestions:>;
+  getOptimizationSuggestions:(pool: AnyPool) => Promise<OptimizationSuggestions>;
+  getProblemQueries: (pool: AnyPool) => Promise<any>;
+  getPerformanceInsights: (pool: AnyPool) => Promise<PerformanceInsight[] | { error: string }>;
 }
 
 export interface DatabaseInventory {
@@ -224,5 +226,25 @@ export interface WaitStat {
   waitTimeMs: number;
   maxWaitTimeMs: number;
   signalWaitTimeMs: number;
+}
+
+export interface OptimizationSuggestions {
+  missingIndexes: Array<{
+    impact: number;
+    createStatement: string;
+    tableSchema: string;
+    tableName: string;
+  }>;
+  unusedIndexes: Array<{
+    tableName: string;
+    indexName: string;
+    impact: number;
+    recommendation: string;
+  }>;
+  tableOptimizations: Array<{
+    tableName: string;
+    suggestion: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
 }
 
