@@ -175,6 +175,188 @@ const SQL_QUERIES = {
     )
     ORDER BY wait_time_ms DESC;
   `,
+
+  /** [Real-time] ค้นหา Query ที่กำลังทำงาน "ณ ขณะนี้" และใช้เวลานานเกินกำหนด (ปรับปรุงใหม่) */
+  longRunningQueries: `
+    SELECT 
+      s.session_id,
+      r.status,
+      r.command,
+      r.start_time,
+      r.total_elapsed_time,
+      r.cpu_time,
+      r.logical_reads,
+      st.text AS query
+    FROM sys.dm_exec_sessions s
+    INNER JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
+    CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) st
+    WHERE s.is_user_process = 1 
+      AND r.session_id <> @@SPID
+      AND r.status <> 'sleeping'
+      AND r.total_elapsed_time > 10000  -- กำหนดค่า Threshold: ทำงานนานกว่า 10 วินาที
+    ORDER BY r.total_elapsed_time DESC;
+  `,
+
+  /** [Real-time] ค้นหา Chain ของ Blocking ที่เกิดขึ้น "ณ ขณะนี้" (ปรับปรุงใหม่) */
+  blockingChains: `
+  WITH BlockingCTE AS (
+    SELECT
+      wt.blocking_session_id,
+      wt.session_id AS blocked_session_id,
+      wt.wait_duration_ms,
+      wt.wait_type,
+      1 AS level
+    FROM sys.dm_os_waiting_tasks AS wt
+    WHERE wt.blocking_session_id <> 0
+      AND wt.session_id <> @@SPID
+
+    UNION ALL
+
+    SELECT
+      wt.blocking_session_id,
+      wt.session_id AS blocked_session_id,
+      wt.wait_duration_ms,
+      wt.wait_type,
+      cte.level + 1
+    FROM sys.dm_os_waiting_tasks AS wt
+    INNER JOIN BlockingCTE cte ON wt.session_id = cte.blocking_session_id
+    WHERE wt.blocking_session_id <> 0
+      AND wt.session_id <> @@SPID
+  )
+  SELECT
+      b1.blocking_session_id,
+      b1.blocked_session_id,
+      b1.wait_duration_ms,
+      b1.wait_type,
+      CAST(STRING_AGG(CONVERT(VARCHAR(20), b2.blocked_session_id), ' -> ') AS VARCHAR(MAX)) AS blocking_chain
+  FROM BlockingCTE b1
+  JOIN BlockingCTE b2 ON b1.blocking_session_id = b2.session_id
+  GROUP BY b1.blocking_session_id, b1.blocked_session_id, b1.wait_duration_ms, b1.wait_type
+  ORDER BY b1.wait_duration_ms DESC;
+`,
+
+  /** [Real-time] ค้นหา Query ที่ใช้ทรัพยากรสูงในขณะนี้ (CPU, Memory, I/O) (ปรับปรุงใหม่) */
+  resourceIntensiveQueries: `
+    SELECT TOP 20
+      s.session_id,
+      r.status,
+      r.command,
+      r.start_time,
+      r.total_elapsed_time,
+      r.cpu_time,
+      r.logical_reads,
+      r.writes,
+      st.text AS query
+    FROM sys.dm_exec_sessions s
+    INNER JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
+    CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) st
+    WHERE s.is_user_process = 1 
+      AND r.session_id <> @@SPID
+      AND r.status <> 'sleeping'
+    ORDER BY r.cpu_time DESC, r.total_elapsed_time DESC;
+  `,
+
+  /** [Analysis] ข้อมูล Wait Stats โดยละเอียด */
+  detailedWaitStats: `
+    SELECT 
+      wait_type,
+      wait_time_ms,
+      waiting_tasks_count,
+      100.0 * wait_time_ms / SUM(wait_time_ms) OVER () AS percentage
+    FROM sys.dm_os_wait_stats
+    WHERE wait_type NOT IN (
+      'CLR_SEMAPHORE', 'LAZYWRITER_SLEEP', 'RESOURCE_QUEUE', 'SLEEP_TASK',
+      'SLEEP_SYSTEMTASK', 'SQLTRACE_BUFFER_FLUSH', 'WAITFOR', 'LOGMGR_QUEUE',
+      'CHECKPOINT_QUEUE', 'REQUEST_FOR_DEADLOCK_SEARCH', 'XE_TIMER_EVENT'
+    )
+    ORDER BY wait_time_ms DESC;
+  `,
+
+  /** [Analysis] การวิเคราะห์การเชื่อมต่อ (Active, Idle, Problematic) */
+  connectionAnalysis: `
+    SELECT 
+      c.client_net_address,
+      c.session_id,
+      s.status,
+      s.login_name,
+      s.host_name,
+      s.program_name,
+      s.cpu_time,
+      s.total_elapsed_time,
+      s.logical_reads,
+      s.writes,
+      s.reads,
+      s.creation_time,
+      s.last_request_start_time,
+      s.last_request_end_time,
+      DATEDIFF(SECOND, s.creation_time, GETDATE()) AS age_seconds,
+      CASE 
+        WHEN s.status = 'running' THEN 'Active'
+        WHEN s.status = 'sleeping' AND DATEDIFF(MINUTE, s.last_request_end_time, GETDATE()) < 5 THEN 'Idle'
+        ELSE 'Problematic'
+      END AS connection_state
+    FROM sys.dm_exec_sessions s
+    JOIN sys.dm_exec_connections c ON s.session_id = c.session_id
+    WHERE s.is_user_process = 1
+    ORDER BY s.total_elapsed_time DESC;
+  `,
+
+  /** [Analysis] การวิเคราะห์ประสิทธิภาพโดยรวม (CPU, Memory, I/O) */
+  performanceCounters: `
+    SELECT TOP 10
+      object_name,
+      counter_name,
+      instance_name,
+      cntr_value
+    FROM sys.dm_os_performance_counters
+    WHERE object_name LIKE '%Processor%' OR object_name LIKE '%Memory%' OR object_name LIKE '%Disk%'
+    ORDER BY cntr_value DESC;
+  `,
+
+  // Update the system analysis queries
+  systemAnalysis: `
+    SELECT 
+      @@SERVERNAME as server_name,
+      @@VERSION as sql_version,
+      DB_NAME() as current_database,
+      (SELECT COUNT(*) FROM sys.dm_exec_connections) as connection_count,
+      (SELECT COUNT(*) FROM sys.dm_exec_requests WHERE status = 'running') as active_requests
+  `,
+
+  // Update connection analysis to use correct DMVs
+  connectionDetails: `
+    SELECT 
+      c.connection_id,
+      c.connect_time,
+      c.num_reads,
+      c.num_writes,
+      c.last_read,
+      c.last_write,
+      c.client_net_address,
+      s.host_name,
+      s.program_name,
+      s.login_name,
+      r.command,
+      r.status,
+      r.wait_type,
+      r.wait_time,
+      r.cpu_time,
+      r.total_elapsed_time
+    FROM sys.dm_exec_connections c
+    LEFT JOIN sys.dm_exec_sessions s 
+      ON c.most_recent_session_id = s.session_id
+    LEFT JOIN sys.dm_exec_requests r 
+      ON s.session_id = r.session_id
+    WHERE s.is_user_process = 1
+  `,
+
+  // Add performance metrics
+  performanceMetrics: `
+    SELECT 
+      (SELECT COUNT(*) FROM sys.dm_exec_requests WHERE status = 'running') as active_queries,
+      (SELECT AVG(CAST(wait_time as BIGINT)) FROM sys.dm_exec_requests WHERE wait_time > 0) as avg_wait_time_ms,
+      (SELECT COUNT(*) FROM sys.dm_exec_sessions WHERE is_user_process = 1) as user_connections
+  `
 };
 
 /**
@@ -344,6 +526,59 @@ const mssqlDriver: IDriver = {
       throw new Error(`Failed to get optimization suggestions: ${err.message}`);
     }
   },
+
+  /**
+   * วิเคราะห์สุขภาพของฐานข้อมูลอย่างละเอียด
+   */
+  analyzeDatabaseHealth: async (pool: AnyPool): Promise<any> => {
+    const mssqlPool = pool as ConnectionPool;
+    
+    try {
+      console.log('[MSSQL Driver] Starting comprehensive database analysis...');
+      
+      const [system, connections, performance] = await Promise.all([
+        mssqlPool.request().query(SQL_QUERIES.systemAnalysis),
+        mssqlPool.request().query(SQL_QUERIES.connectionDetails),
+        mssqlPool.request().query(SQL_QUERIES.performanceMetrics)
+      ]);
+
+      return {
+        system: system.recordset[0],
+        connections: {
+          total: connections.recordset.length,
+          active: connections.recordset.filter(c => c.status === 'running').length,
+          details: connections.recordset
+        },
+        performance: performance.recordset[0],
+        timestamp: new Date().toISOString()
+      };
+
+    } catch (err: any) {
+      console.error('[MSSQL Driver] Analysis error:', err.message);
+      throw new Error(`Database analysis failed: ${err.message}`);
+    }
+  }
 };
 
 export default mssqlDriver;
+
+import { Driver as IDriver, Metrics, AnyPool, DatabaseAnalysis } from "@/types";
+
+interface EnhancedDatabaseAnalysis extends DatabaseAnalysis {
+  queryPerformance: {
+    longRunning: any[];
+    blocking: any[];
+    resourceIntensive: any[];
+    slowHistorical: any[];
+  };
+  systemHealth: {
+    waitStats: any[];
+    connections: any;
+    performance: any;
+  };
+  storageAnalysis: {
+    databaseSize: number;
+    tablesSizes: any[];
+    logSpace: any;
+  };
+}
