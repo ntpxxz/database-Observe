@@ -1,94 +1,87 @@
-import React, { FC, useState } from 'react';
-import { X, Copy, Check } from 'lucide-react';
-import { PerformanceInsight } from '@/types/index';
+import React, { FC } from "react";
+import { PerformanceInsight } from "@/types";
+import { X } from "lucide-react";
 
 interface InsightDetailModalProps {
-  insight: PerformanceInsight;
+  insight: PerformanceInsight | null;
   onClose: () => void;
 }
 
+// Helper component สำหรับแสดงรายละเอียดแต่ละรายการ
+const DetailItem: FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
+  <div className="py-2">
+    <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</dt>
+    <dd className="mt-1 text-sm text-slate-200">{value ?? "N/A"}</dd>
+  </div>
+);
+
 export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClose }) => {
-  const [copied, setCopied] = useState(false);
+  if (!insight) return null;
 
-  // ดึงคำสั่ง SQL ที่เกี่ยวข้องออกมา
-  const blockingQuery = insight.details?.blocking_query;
-  const blockedQuery = insight.details?.blocked_query;
-  const slowQuery = insight.details?.query;
+  const { details, title, severity } = insight;
 
-  const handleCopy = (textToCopy: string) => {
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000); // Reset icon after 2 seconds
-  };
-  
-  const renderQueryBlock = (title: string, queryText: string | undefined) => {
-    if (!queryText || queryText.startsWith('N/A')) return null;
-
-    return (
-        <div className="mt-4">
-            <div className="flex justify-between items-center mb-1">
-                <h4 className="text-sm font-semibold text-slate-400">{title}</h4>
-                <button
-                    onClick={() => handleCopy(queryText)}
-                    className="text-slate-400 hover:text-white transition-colors p-1 rounded-md"
-                    title="Copy Query"
-                >
-                    {copied ? <Check size={16} className="text-green-400"/> : <Copy size={16}/>}
-                </button>
-            </div>
-            <pre className="bg-slate-900/70 p-3 rounded-md text-xs text-slate-300 font-mono overflow-auto max-h-60">
-                <code>{queryText.trim()}</code>
-            </pre>
-        </div>
-    );
-  }
+  // ดึง Full Query ออกมา
+  const fullQuery = details?.query || details?.query_text || details?.blocked_query || details?.query_1 || "No query text available.";
 
   return (
-    // Modal Overlay
     <div 
-        className="fixed inset-0 bg-black/60 z-50 flex justify-center items-center p-4"
-        onClick={onClose}
+      className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"
+      onClick={onClose}
     >
-      {/* Modal Content */}
       <div 
-        className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()} // Prevent closing modal when clicking inside
+        className="bg-slate-800 border border-slate-700 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()} // ป้องกันการปิด Modal เมื่อคลิกที่ตัว Modal เอง
       >
-        {/* Modal Header */}
+        {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-slate-700">
-          <h3 className="text-lg font-bold text-white">Performance Insight Details</h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-white">
-            <X size={24} />
+          <h2 className="text-lg font-bold text-slate-100">{title}</h2>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-700">
+            <X size={20} className="text-slate-400" />
           </button>
         </div>
 
-        {/* Modal Body */}
+        {/* Body */}
         <div className="p-6 overflow-y-auto">
-            <p className="text-md text-slate-300 mb-4">{insight.message}</p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
-                <div className="bg-slate-700/50 p-3 rounded-lg">
-                    <span className="text-slate-400 block">Severity</span>
-                    <span className="font-bold text-white capitalize">{insight.severity}</span>
-                </div>
-                <div className="bg-slate-700/50 p-3 rounded-lg">
-                    <span className="text-slate-400 block">Insight Type</span>
-                    <span className="font-bold text-white capitalize">{(insight.type ?? 'unknown').replace('_', ' ')}</span>
-                </div>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2 mb-4">
+            <DetailItem label="Severity" value={severity} />
+            <DetailItem label="Avg. Duration (ms)" value={details?.mean_exec_time_ms?.toLocaleString()} />
+            <DetailItem label="Total Calls" value={details?.calls?.toLocaleString()} />
+            <DetailItem label="Session ID" value={details?.session_id} />
+            <DetailItem label="Blocking Session" value={details?.blocking_session_id} />
+            <DetailItem label="Wait Time (ms)" value={details?.wait_duration_ms?.toLocaleString()} />
+          </div>
 
-            {/* Render query blocks based on insight type */}
-            {insight.type === 'blocking_query' && (
-                <>
-                    {renderQueryBlock('Blocking Query (ตัวที่บล็อก)', blockingQuery)}
-                    {renderQueryBlock('Blocked Query (ตัวที่ถูกบล็อก)', blockedQuery)}
-                </>
-            )}
+          {/* Full Query Section */}
+          <div>
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Full Query Text</h3>
+            <pre className="bg-slate-900/70 p-4 rounded-md text-sm text-cyan-300 font-mono overflow-x-auto border border-slate-700">
+              <code>
+                {fullQuery}
+              </code>
+            </pre>
+          </div>
 
-            {insight.type === 'slow_query' && (
-                renderQueryBlock('Slow Query', slowQuery)
-            )}
-            
+           {/* แสดงข้อมูลเพิ่มเติมสำหรับ Deadlock */}
+           {details?.query_2 && (
+             <div className="mt-4">
+               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Blocked Query (In Deadlock)</h3>
+               <pre className="bg-slate-900/70 p-4 rounded-md text-sm text-amber-300 font-mono overflow-x-auto border border-slate-700">
+                 <code>
+                   {details.query_2}
+                 </code>
+               </pre>
+             </div>
+           )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t border-slate-700 text-right">
+            <button
+                onClick={onClose}
+                className="bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-4 rounded-md"
+            >
+                Close
+            </button>
         </div>
       </div>
     </div>

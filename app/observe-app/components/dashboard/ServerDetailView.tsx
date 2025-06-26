@@ -79,7 +79,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     "performance"
   );
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-
+  console.log("Metrics object received by ServerDetailView:", metrics);
   const serverStatus = useMemo(() => {
     if (!metrics?.kpi) return "unknown";
     const { cpu = 0, memory = 0 } = metrics.kpi;
@@ -88,11 +88,25 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     return "healthy";
   }, [metrics]);
 
-  const handleRefresh = () => {
-    onRefresh();
-    setLastRefresh(new Date());
+  const handleRefresh = async () => {
+    try {
+      await onRefresh();
+      setLastRefresh(new Date());
+    } catch (err) {
+      console.error("Failed to refresh data:", err);
+    }
   };
+  const totalMemoryInMb = useMemo(() => {
+    if (!metrics?.hardware?.databaseMetrics) {
+      return null;
+    }
+    return metrics.hardware.databaseMetrics.reduce(
+      (sum, db) => sum + db.memory_in_buffer_mb,
+      0
+    );
+  }, [metrics]); // คำนวณใหม่เมื่อ metrics เปลี่ยน
 
+  // ... ส่วนของ if (isLoading), if (error), if (!metrics) ..
   if (isLoading) return <LoadingSkeleton />;
   if (error) return <ErrorDisplay error={error} onRetry={handleRefresh} />;
   if (!metrics)
@@ -163,39 +177,49 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <KPIWidget
               icon={<Cpu size={24} />}
-              title="CPU"
-              value={metrics.kpi.cpu}
+              title="CPU Pressure"
+              value={
+                metrics.hardware?.cpuUsage !== undefined
+                  ? Math.round(metrics.hardware.cpuUsage)
+                  : null
+              }
               unit="%"
               color="sky"
             />
             <KPIWidget
               icon={<MemoryStick size={24} />}
-              title="Memory"
-              value={metrics.kpi.memory}
-              unit="%"
+              title="Memory in Buffer"
+              value={
+                totalMemoryInMb !== null ? Math.round(totalMemoryInMb) : null
+              }
+              unit="MB"
               color="violet"
             />
             <KPIWidget
               icon={<ShieldCheck size={24} />}
               title="Cache Hit Rate"
-              value={metrics.stats?.cache_hit_rate}
+              value={
+                metrics.hardware.stats?.cache_hit_rate !== undefined
+                  ? Math.round(metrics.hardware.stats.cache_hit_rate)
+                  : null
+              }
               unit="%"
               color="green"
             />
             <KPIWidget
               icon={<Activity size={24} />}
               title="Active Connections"
-              value={metrics.kpi.connections}
+              value={metrics.kpi?.connections}
               unit=""
               color="amber"
             />
-          </section>
+          </section>{" "}
           <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
             <h3 className="text-xl font-semibold mb-4 text-white">
               <TrendingUp className="mr-3 text-sky-400" />
               Database Performance Insights
             </h3>
-          
+
             <PerformanceInsightsTable
               key={server.inventoryID} // Force re-mount when server changes
               insights={metrics?.performanceInsights}

@@ -101,12 +101,29 @@ export interface QueryAnalysisModalProps {
   onClose: () => void;
   query: PerformanceInsight | null;
 }
-
+export interface HardwareMetric {
+  database_name: string;
+  data_size_mb: number;
+  log_size_mb: number;
+  memory_in_buffer_mb: number;
+  total_reads_count: number;
+  total_writes_count: number;
+}
 export interface Metrics {
   kpi: {
-    connections: string | number;
-    [key: string]: any;
+    cpu?: number;
+    memory?: number;
+    disk?: number;
+    connections?: number;
   };
+  hardware?: {
+    cpuUsage: number;
+    databaseMetrics: HardwareMetric[];
+  } | null;
+
+  hardwareError?: string | null;
+  error?: string | null;
+
   stats?: {
     cache_hit_rate?: string | number;
     [key: string]: any;
@@ -116,6 +133,7 @@ export interface Metrics {
 
 // Update Driver interface to use specific config type
 export interface Driver {
+  [x: string]: any;
   connect: (config: DatabaseConnectionConfig) => Promise<AnyPool>;
   disconnect: (pool: AnyPool) => Promise<void>;
   getMetrics: (pool: AnyPool) => Promise<Partial<Metrics>>;
@@ -247,4 +265,5 @@ export interface OptimizationSuggestions {
     priority: 'high' | 'medium' | 'low';
   }>;
 }
+
 

@@ -1,35 +1,69 @@
-import React, { FC } from "react";
+import React, { FC, useState, useEffect } from "react";
 import {
-  Bot,
   AlertCircle,
   TrendingUp,
   Lock,
   ChevronLeft,
   ChevronRight,
+  // เพิ่ม imports สำหรับ icon ใหม่
+  Hourglass,
+  Skull,
+  Database,
+  HelpCircle,
 } from "lucide-react";
 import { PerformanceInsight } from "@/types";
 import { InsightDetailModal } from "./InsightDetailModal";
-import { useState, useEffect } from "react";
 
 interface PerformanceInsightsTableProps {
   insights: PerformanceInsight[] | { error: string } | undefined | null;
-  serverName?: string; // Add server identifier to track changes
-  isLoading?: boolean; // Add explicit loading state
+  serverName?: string;
+  isLoading?: boolean;
 }
 
-// Helper component เพื่อแสดง Icon ตามประเภทของ Insight
+// 1. อัปเดต Icon ให้รองรับ Insight ประเภทใหม่ๆ
 const InsightIcon: FC<{ type: string }> = ({ type }) => {
   switch (type) {
     case "slow_query":
       return (
         <TrendingUp size={16} className="text-orange-400 mr-2 flex-shrink-0" />
       );
+    case "long_running_query":
+      return (
+        <Hourglass size={16} className="text-yellow-400 mr-2 flex-shrink-0" />
+      );
     case "blocking_query":
-      return <Lock size={16} className="text-red-400 mr-2 flex-shrink-0" />;
+      return <Lock size={16} className="text-red-500 mr-2 flex-shrink-0" />;
+    case "deadlock_event":
+      return <Skull size={16} className="text-rose-500 mr-2 flex-shrink-0" />;
+    case "high_tempdb_usage":
+        return <Database size={16} className="text-cyan-400 mr-2 flex-shrink-0" />;
+    case "error":
+      return (
+        <AlertCircle size={16} className="text-red-400 mr-2 flex-shrink-0" />
+      );
     default:
-      return null;
+      return (
+        <HelpCircle size={16} className="text-slate-500 mr-2 flex-shrink-0" />
+      );
   }
 };
+
+// 2. สร้าง Mapping เพื่อแสดงชื่อประเภทที่สวยงามและอ่านง่าย
+const INSIGHT_TYPE_MAP: { [key: string]: string } = {
+  slow_query: "Slow Query",
+  blocking_query: "Blocking",
+  long_running_query: "Long Running",
+  deadlock_event: "Deadlock",
+  high_tempdb_usage: "TempDB Usage",
+  error: "Error",
+};
+const truncateText = (text: string, maxLength: number): string => {
+  if (!text || text.length <= maxLength) {
+    return text;
+  }
+  return text.substring(0, maxLength).trim() + "...";
+};
+
 
 export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   insights,
@@ -41,13 +75,11 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const ROWS_PER_PAGE = 10;
 
-  // Reset all state when server changes or insights change
   useEffect(() => {
     setCurrentPage(1);
-    setSelectedInsight(null); // Also reset selected insight
-  }, [insights, serverName]); // Include serverName to detect server changes
+    setSelectedInsight(null);
+  }, [insights, serverName]);
 
-  // Show loading state explicitly
   if (isLoading) {
     return (
       <div className="text-slate-500 text-sm text-center py-8">
@@ -56,7 +88,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     );
   }
 
-  // Case 1: Handle loading or undefined state
   if (insights === undefined || insights === null) {
     return (
       <p className="text-slate-500 text-sm text-center py-4">
@@ -65,7 +96,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     );
   }
 
-  // Case 2: Handle error state (e.g., pg_stat_statements is not enabled)
   if (!Array.isArray(insights) && "error" in insights) {
     return (
       <div className="p-4 bg-red-500/10 text-red-300 rounded-lg text-sm flex items-center gap-2">
@@ -75,7 +105,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     );
   }
 
-  // Case 3: Handle empty data array
   if (!Array.isArray(insights) || insights.length === 0) {
     return (
       <p className="text-slate-400 text-sm text-center py-4">
@@ -84,17 +113,20 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     );
   }
 
+
   const totalPages = Math.ceil(insights.length / ROWS_PER_PAGE);
   const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
   const endIndex = startIndex + ROWS_PER_PAGE;
   const currentInsights = insights.slice(startIndex, endIndex);
 
-  // Case 4: Render the table with data
   return (
     <>
       <table className="w-full text-sm text-left">
         <thead className="text-xs text-slate-500 uppercase">
           <tr>
+            <th scope="col" className="px-4 py-3 font-normal">
+              Type
+            </th>
             <th scope="col" className="px-4 py-3 font-normal">
               Query / Insight Title
             </th>
@@ -111,14 +143,21 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
         </thead>
         <tbody>
           {currentInsights.map((insight) => {
+            // 3. ปรับโครงสร้างตารางให้ถูกต้อง
+            
+            const displayType = INSIGHT_TYPE_MAP[insight.type] || "Unknown";
+
             const queryText =
               insight.details?.query ||
+              insight.details?.query_text || // รองรับ field ใหม่จาก mssqlDriver
               insight.details?.blocked_query ||
               insight.title ||
               "N/A";
+
             const duration = Math.round(
               insight.details?.mean_exec_time_ms ??
                 insight.details?.wait_duration_ms ??
+                insight.details?.total_elapsed_time ?? // สำหรับ Long running
                 -1
             );
 
@@ -131,21 +170,25 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                 className="border-b border-slate-700/50 hover:bg-slate-800/50 cursor-pointer"
                 onClick={() => setSelectedInsight(insight)}
               >
-                <td
-                  className="px-4 py-3 font-mono text-xs text-slate-300 max-w-lg"
-                  title={queryText}
-                >
-                  <div className="flex items-center">
+                {/* คอลัมน์ที่ 1: Type */}
+                <td className="px-4 py-3">
+                  <div className="flex items-center text-slate-300 whitespace-nowrap">
                     <InsightIcon type={insight.type} />
-                    <span className="truncate">{queryText}</span>
+                    <span>{displayType}</span>
                   </div>
                 </td>
+                {/* คอลัมน์ที่ 2: Query / Insight Title */}
+                <td className="px-4 py-3 font-mono text-xs text-slate-300 max-w-md" title={queryText}>
+                <span>{truncateText(queryText, 100)}</span>                </td>
+                {/* คอลัมน์ที่ 3: Duration */}
                 <td className="px-4 py-3 font-semibold text-amber-300 text-right">
                   {duration !== -1 ? duration.toLocaleString() : "N/A"}
                 </td>
+                {/* คอลัมน์ที่ 4: Calls */}
                 <td className="px-4 py-3 text-slate-400 text-right">
                   {callCount ? callCount.toLocaleString() : "N/A"}
                 </td>
+                {/* คอลัมน์ที่ 5: Analyze Button */}
                 <td className="px-4 py-3 text-center">
                   <button className="text-sky-300 font-bold py-1 px-3 rounded-lg flex items-center mx-auto text-xs">
                     View Details
@@ -157,7 +200,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
         </tbody>
       </table>
       
-      {/* Pagination */}
+
       <div className="flex justify-between items-center px-4 py-3 text-sm text-slate-400">
         <span>Total Insights: {insights.length.toLocaleString()}</span>
         <div className="flex items-center gap-4">
@@ -185,7 +228,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
         </div>
       </div>
       
-      {/* Modal */}
       {selectedInsight && (
         <InsightDetailModal
           insight={selectedInsight}

@@ -20,24 +20,26 @@ const useInventoryManager = () => {
 
     const fetchServers = useCallback(async () => {
         setIsLoading(true);
+        setError(null);
         try {
             const res = await fetch(API_URL);
             if (!res.ok) throw new Error('Failed to fetch server inventory');
             const data = await res.json();
             const serverList: DatabaseInventory[] = data.data || [];
             setServers(serverList.sort((a, b) => a.systemName.localeCompare(b.systemName)));
-            setError(null);
         } catch (err: any) {
             setError(err.message);
+            setServers([])
         } finally {
             setIsLoading(false);
+           
         }
     }, [API_URL]);
-
+console.log(`%c1. [useInventoryManager Hook] Initializing with API URL: ${API_URL}`, 'color: blue;');
     useEffect(() => { fetchServers(); }, [fetchServers]);
-
     return { servers, isLoading, error, refreshServers: fetchServers };
 };
+
 
 // Custom Hook for fetching metrics for the selected server
 // --- Custom Hook for fetching metrics (เวอร์ชันสืบสวน) ---
@@ -49,73 +51,59 @@ const useServerMetrics = (server: DatabaseInventory | null) => {
     // --- LOG 3 ---
     // Log นี้บอกเราว่า Hook ได้รับ `server` object ตัวไหนเข้ามาในแต่ละครั้งที่ re-render
     console.log(`%c3. [useServerMetrics Hook] Received server prop: ${server?.systemName ?? 'null'}`, 'color: orange;');
-
-    useEffect(() => {
-        const controller = new AbortController();
-        const signal = controller.signal;
-
+    const fetchMetrics = useCallback(async () => {
         if (!server?.inventoryID) {
-            setMetrics(null);
-            setIsLoading(false);
-            setError(null);
-            return;
+          setMetrics(null);
+          return;
         }
-        
-        const fetchMetricsForServer = async () => {
-            // --- LOG 4 ---
-            // Log ยืนยันว่า Effect กำลังจะเริ่มดึงข้อมูลสำหรับ Server ตัวไหน
-            console.log(`%c4. [useServerMetrics Effect] Firing effect for: ${server?.systemName}`, 'color: green;');
-            
-            setIsLoading(true);
-            setError(null);
-            setMetrics(null);
-            try {
-                const res = await fetch(`/api/inventory/${server.inventoryID}/metrics`, { signal }); // <--- เพิ่ม signal
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.message || 'Failed to fetch metrics');
-                }
-                const data: ServerMetrics = await res.json();
-                //--- LOG 5 ---
-                // Log ยืนยันว่าเราได้ข้อมูล metrics ใหม่มาแล้ว
-                console.log(`%c5. [useServerMetrics Success] Fetched and set new metrics for: ${server?.systemName}`, 'color: lightgreen;');
-                setMetrics(data);
-
-            } catch (err: any) {
-                if (err.name === 'AbortError') {
-                    // --- LOG 6 ---
-                    // Log นี้จะทำงานเมื่อ fetch ถูกยกเลิก
-                    // เช่น เมื่อ user เลือก server ใหม่ก่อนที่ fetch จะเสร็จ
-                    console.log(`%c6. [useServerMetrics Aborted] Fetch aborted for previous server: ${server?.systemName}`, 'color: gray;');
-                } else {
-                    setError(err.message);
-                    setMetrics(null);
-                }
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        fetchMetricsForServer();
-        
-        // Cleanup function: จะทำงานเมื่อ user เลือก server ใหม่ก่อนที่ fetch ครั้งเก่าจะเสร็จ
-        return () => {
-            controller.abort();
-        };
-
-    }, [server?.inventoryID]);
-
-   
-    const refreshMetrics = useCallback(() => {
-        if (server?.inventoryID) {
-            // Trigger a re-fetch by updating a dependency
-            setError(null);
-            setMetrics(null);
-            setIsLoading(true);
+    
+        setIsLoading(true);
+        setError(null);
+        setMetrics(null);
+    
+        try {
+         
+          const [metricsRes, hardwareRes] = await Promise.all([
+            fetch(`/api/inventory/${server.inventoryID}/database`),
+            fetch(`/api/inventory/${server.inventoryID}/hardware`)
+          ]);
+    
+          if (!metricsRes.ok) {
+            const errorData = await metricsRes.json();
+            throw new Error(errorData.error || 'Failed to fetch main metrics');
+          }
+          const metricsData = await metricsRes.json();
+    
+          let hardwareData = null;
+          let hardwareError = null;
+          if (hardwareRes.ok) {
+            hardwareData = await hardwareRes.json();
+          } else {
+            const hwErrorData = await hardwareRes.json();
+            hardwareError = hwErrorData.details || "Failed to fetch hardware metrics";
+          }
+    
+          // รวมข้อมูลทั้งหมดใส่ใน State เดียว
+          setMetrics({
+            ...metricsData,
+            hardware: hardwareData,
+            hardwareError: hardwareError,
+          });
+    
+        } catch (err: any) {
+          setError(err.message);
+          setMetrics(null);
+        } finally {
+          setIsLoading(false);
         }
-    }, [server?.inventoryID]);
-    return { metrics, isLoading, error, refreshMetrics };
-};
+      }, [server?.inventoryID]);
+    
+      useEffect(() => {
+        fetchMetrics();
+      }, [fetchMetrics]);
+    
+      return { metrics, isLoading, error, refreshMetrics: fetchMetrics };
+    };
 
 // --- Main Page Component ---
 const Home: FC = () => {
@@ -179,7 +167,7 @@ const Home: FC = () => {
                     setActiveServer(handleSelectserver);
                 }
                 }
-                onRefresh={refreshServers}  
+                 
             />
             <main className="flex-1 p-4 md:p-8">
                 <h1 className="text-3xl font-bold mb-6 text-white">
