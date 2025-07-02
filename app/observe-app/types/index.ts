@@ -7,6 +7,8 @@ export type AnyPool = PgPool | MssqlPool;
 
 // Performance insight structure
 export interface PerformanceInsight {
+  details: any;
+  title: any;
   id?: number;
   query?: string;
   duration?: number;
@@ -26,14 +28,20 @@ export interface DatabaseConnectionConfig {
   databaseType: DbType;
   connectionUsername: string;
   credentialReference: string;
+  appName?: string;  // Optional app name for connection
   options?: {
     encrypt?: boolean;
     trustServerCertificate?: boolean;
     enableArithAbort?: boolean;
   };
+  requestTimeout?: number;
+  poolMax?: number;
+  poolMin?: number;
+  idleTimeout?: number;
 }
 
-// Update ServerConfig to remove duplicates
+
+// API Helper functions
 export interface ServerConfig extends DatabaseConnectionConfig {
   id?: string;
   name: string;
@@ -267,3 +275,17 @@ export interface OptimizationSuggestions {
 }
 
 
+export interface ErrorResponse {
+  error: string;
+  code: string;
+  timestamp: string;
+}
+
+export interface SuccessResponse {
+  data: any; // Replace with your actual data type
+  meta: {
+    id: string;
+    analysisLevel: AnalysisLevel;
+    timestamp: string;
+  };
+}

@@ -36,7 +36,9 @@ const InsightIcon: FC<{ type: string }> = ({ type }) => {
     case "deadlock_event":
       return <Skull size={16} className="text-rose-500 mr-2 flex-shrink-0" />;
     case "high_tempdb_usage":
-        return <Database size={16} className="text-cyan-400 mr-2 flex-shrink-0" />;
+      return (
+        <Database size={16} className="text-cyan-400 mr-2 flex-shrink-0" />
+      );
     case "error":
       return (
         <AlertCircle size={16} className="text-red-400 mr-2 flex-shrink-0" />
@@ -64,12 +66,12 @@ const truncateText = (text: string, maxLength: number): string => {
   return text.substring(0, maxLength).trim() + "...";
 };
 
-
 export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   insights,
   serverName,
   isLoading = false,
 }) => {
+  console.log("[PerformanceInsightsTable] Rendering insights:", insights);
   const [selectedInsight, setSelectedInsight] =
     useState<PerformanceInsight | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -113,7 +115,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     );
   }
 
-
   const totalPages = Math.ceil(insights.length / ROWS_PER_PAGE);
   const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
   const endIndex = startIndex + ROWS_PER_PAGE;
@@ -131,7 +132,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
               Query / Insight Title
             </th>
             <th scope="col" className="px-4 py-3 font-normal text-right">
-              Avg. Duration (ms) / Wait (ms)
+              Avg. Duration (s) / Wait (s)
             </th>
             <th scope="col" className="px-4 py-3 font-normal text-right">
               Calls
@@ -143,26 +144,33 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
         </thead>
         <tbody>
           {currentInsights.map((insight) => {
-            // 3. ปรับโครงสร้างตารางให้ถูกต้อง
-            
+            // --- [แก้ไข] Logic ทั้งหมดด้านล่างนี้ ---
+
             const displayType = INSIGHT_TYPE_MAP[insight.type] || "Unknown";
 
             const queryText =
               insight.details?.query ||
-              insight.details?.query_text || // รองรับ field ใหม่จาก mssqlDriver
-              insight.details?.blocked_query ||
+              insight.details?.query_text ||
+              insight.details?.blocking_query ||
+              insight.details?.query_1 ||
               insight.title ||
               "N/A";
 
-            const duration = Math.round(
-              insight.details?.mean_exec_time_ms ??
-                insight.details?.wait_duration_ms ??
-                insight.details?.total_elapsed_time ?? // สำหรับ Long running
-                -1
-            );
+            // 1. รวมค่าเวลาทั้งหมด (หน่วยเป็น ms หรือ µs) มาไว้ในตัวแปรเดียว
+            const timeValueInMs =
+              insight.details?.mean_exec_time_ms ??            
+              insight.details?.total_elapsed_time ??
+              insight.details?.wait_duration_ms ??
+              null; 
 
-            const callCount =
-              insight.details?.calls ?? insight.details?.totalExecutions;
+
+            // 2. คำนวณและจัดรูปแบบในตัวแปรเดียว
+            const durationDisplay =
+              timeValueInMs !== null
+                ? (timeValueInMs / 1000).toFixed(2) // แปลง ms -> s และจัดรูปแบบทศนิยม 2 ตำแหน่ง
+                : "N/A"; 
+
+            const callCount = insight.details?.calls;
 
             return (
               <tr
@@ -178,11 +186,15 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                   </div>
                 </td>
                 {/* คอลัมน์ที่ 2: Query / Insight Title */}
-                <td className="px-4 py-3 font-mono text-xs text-slate-300 max-w-md" title={queryText}>
-                <span>{truncateText(queryText, 100)}</span>                </td>
+                <td
+                  className="px-4 py-3 font-mono text-xs text-slate-300 max-w-md"
+                  title={queryText}
+                >
+                  <span>{truncateText(queryText, 100)}</span>
+                </td>
                 {/* คอลัมน์ที่ 3: Duration */}
                 <td className="px-4 py-3 font-semibold text-amber-300 text-right">
-                  {duration !== -1 ? duration.toLocaleString() : "N/A"}
+                  {durationDisplay}
                 </td>
                 {/* คอลัมน์ที่ 4: Calls */}
                 <td className="px-4 py-3 text-slate-400 text-right">
@@ -199,7 +211,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
           })}
         </tbody>
       </table>
-      
 
       <div className="flex justify-between items-center px-4 py-3 text-sm text-slate-400">
         <span>Total Insights: {insights.length.toLocaleString()}</span>
@@ -227,7 +238,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
           </div>
         </div>
       </div>
-      
+
       {selectedInsight && (
         <InsightDetailModal
           insight={selectedInsight}

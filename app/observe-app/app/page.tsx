@@ -1,6 +1,6 @@
 'use client';
 
-import React, { FC, useState, useEffect, useCallback } from 'react';
+import React, { FC, useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { ManagementPanel } from '@/components/shared/forms/ManagementPanel';
 import { ServerDetailView } from '@/components/dashboard/ServerDetailView';
@@ -9,7 +9,6 @@ import { EditDatabaseModal } from '@/components/shared/forms/EditDatabaseModal';
 import { ServerDetailModal } from '@/components/shared/forms/ServerDetailModal';
 import { DatabaseInventory, ServerMetrics, ServerFormData } from '@/types';
 import { AlertCircle } from 'lucide-react';
-
 
 // Custom Hook for managing the server list
 const useInventoryManager = () => {
@@ -29,90 +28,88 @@ const useInventoryManager = () => {
             setServers(serverList.sort((a, b) => a.systemName.localeCompare(b.systemName)));
         } catch (err: any) {
             setError(err.message);
-            setServers([])
+            setServers([]);
         } finally {
             setIsLoading(false);
-           
         }
     }, [API_URL]);
-console.log(`%c1. [useInventoryManager Hook] Initializing with API URL: ${API_URL}`, 'color: blue;');
+
     useEffect(() => { fetchServers(); }, [fetchServers]);
     return { servers, isLoading, error, refreshServers: fetchServers };
 };
 
+let REFRESH_INTERVAL_MS = 60000; // 60 seconds
 
-// Custom Hook for fetching metrics for the selected server
-// --- Custom Hook for fetching metrics (เวอร์ชันสืบสวน) ---
-const useServerMetrics = (server: DatabaseInventory | null) => {
+const useDatabaseMetrics = (server: DatabaseInventory | null) => {
     const [metrics, setMetrics] = useState<ServerMetrics | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // --- LOG 3 ---
-    // Log นี้บอกเราว่า Hook ได้รับ `server` object ตัวไหนเข้ามาในแต่ละครั้งที่ re-render
-    console.log(`%c3. [useServerMetrics Hook] Received server prop: ${server?.systemName ?? 'null'}`, 'color: orange;');
     const fetchMetrics = useCallback(async () => {
-        if (!server?.inventoryID) {
-          setMetrics(null);
-          return;
-        }
-    
+        if (!server?.inventoryID) return;
+
         setIsLoading(true);
         setError(null);
-        setMetrics(null);
-    
         try {
-         
-          const [metricsRes, hardwareRes] = await Promise.all([
-            fetch(`/api/inventory/${server.inventoryID}/database`),
-            fetch(`/api/inventory/${server.inventoryID}/hardware`)
-          ]);
-    
-          if (!metricsRes.ok) {
-            const errorData = await metricsRes.json();
-            throw new Error(errorData.error || 'Failed to fetch main metrics');
-          }
-          const metricsData = await metricsRes.json();
-    
-          let hardwareData = null;
-          let hardwareError = null;
-          if (hardwareRes.ok) {
-            hardwareData = await hardwareRes.json();
-          } else {
-            const hwErrorData = await hardwareRes.json();
-            hardwareError = hwErrorData.details || "Failed to fetch hardware metrics";
-          }
-    
-          // รวมข้อมูลทั้งหมดใส่ใน State เดียว
-          setMetrics({
-            ...metricsData,
-            hardware: hardwareData,
-            hardwareError: hardwareError,
-          });
-    
+            const res = await fetch(`/api/inventory/${server.inventoryID}/database`);
+            if (!res.ok) throw new Error('Failed to fetch database metrics');
+            const json = await res.json();
+            setMetrics(json);
         } catch (err: any) {
-          setError(err.message);
-          setMetrics(null);
+            setError(err.message);
+            setMetrics(null);
         } finally {
-          setIsLoading(false);
+            setIsLoading(false);
         }
-      }, [server?.inventoryID]);
-    
-      useEffect(() => {
-        fetchMetrics();
-      }, [fetchMetrics]);
-    
-      return { metrics, isLoading, error, refreshMetrics: fetchMetrics };
-    };
+    }, [server?.inventoryID]);
 
-// --- Main Page Component ---
+    useEffect(() => {
+        if (server) fetchMetrics();
+    }, [server, fetchMetrics]);
+
+    return { metrics, isLoading, error };
+};
+
+const useHardwareMetrics = (server: DatabaseInventory | null) => {
+    const [hardware, setHardware] = useState<any>(null);
+    const [hardwareError, setHardwareError] = useState<string | null>(null);
+
+    const fetchHardware = useCallback(async () => {
+        if (!server?.inventoryID) return;
+        try {
+            const res = await fetch(`/api/inventory/${server.inventoryID}/hardware`);
+            if (!res.ok) throw new Error('Failed to fetch hardware metrics');
+            const json = await res.json();
+            setHardware(json);
+        } catch (err: any) {
+            setHardwareError(err.message);
+            setHardware(null);
+        }
+    }, [server?.inventoryID]);
+
+    useEffect(() => {
+        if (!server) return;
+        fetchHardware();
+
+        const intervalId = setInterval(() => {
+            fetchHardware();
+        }, REFRESH_INTERVAL_MS);
+
+        return () => clearInterval(intervalId);
+    }, [server, fetchHardware]);
+
+    return { hardware, hardwareError, refreshHardware: fetchHardware };
+};
+
 const Home: FC = () => {
     const [modal, setModal] = useState<{ type: 'add' | 'edit' | 'detail' | null, data?: any }>({ type: null });
     const { servers, isLoading: isInventoryLoading, error: inventoryError, refreshServers } = useInventoryManager();
     const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(null);
-    const { metrics, isLoading: isMetricsLoading, error: metricsError, refreshMetrics } = useServerMetrics(activeServer);
-    console.log(`%c2. [Home Component Render] Current activeServer state is: ${activeServer?.systemName ?? 'null'}`, 'color: yellow;');
-    // This effect ensures the view updates correctly if the active server is deleted
+    const { metrics, isLoading: isMetricsLoading, error: metricsError } = useDatabaseMetrics(activeServer);
+    const { hardware, hardwareError } = useHardwareMetrics(activeServer);
+
+    const mergedMetrics = metrics ? { ...metrics, hardware: { ...hardware } ?? {}, hardwareError } : { databaseMetrics: {}, hardware: {}, hardwareError: null };
+
     useEffect(() => {
         if (activeServer && !servers.find(s => s.inventoryID === activeServer.inventoryID)) {
             setActiveServer(null);
@@ -130,19 +127,21 @@ const Home: FC = () => {
         await refreshServers();
         setModal({ type: null });
     };
+
     const handleEditServer = async (data: DatabaseInventory) => {
         await fetch(`/api/inventory/${data.inventoryID}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
         alert("Server updated successfully");
         try {
-            if (activeServer?.inventoryID === data.inventoryID) {               
-                setActiveServer(data);                
+            if (activeServer?.inventoryID === data.inventoryID) {
+                setActiveServer(data);
             }
         } catch (error) {
             console.error("Error updating active server:", error);
-        }   
+        }
         await refreshServers();
         setModal({ type: null });
     };
+
     const handleDeleteServer = async (id: string) => {
         if (window.confirm("Are you sure?")) {
             await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
@@ -151,8 +150,7 @@ const Home: FC = () => {
                 alert("Server deleted successfully");
             } catch (error) {
                 console.error("Error deleting active server:", error);
-            }       
-            
+            }
             await refreshServers();
         }
     };
@@ -163,29 +161,29 @@ const Home: FC = () => {
                 servers={servers} 
                 activeServer={activeServer}
                 onSelectServer={handleSelectserver => {
-                    console.log(`%c1. [Sidebar] Selected server: ${handleSelectserver.systemName}`, 'color: blue;');
                     setActiveServer(handleSelectserver);
-                }
-                }
-                 
+                }}
             />
             <main className="flex-1 p-4 md:p-8">
                 <h1 className="text-3xl font-bold mb-6 text-white">
                     {activeServer ? activeServer.systemName : 'Database Inventory'}
                 </h1>
                 {inventoryError && <div className="text-red-400 p-3 bg-red-500/10 rounded-lg"><AlertCircle size={16} className="inline mr-2"/>{inventoryError}</div>}
-                
                 {isInventoryLoading ? (
                     <p className="text-center py-20 text-slate-400">Loading Inventory...</p>
                 ) : (
                     activeServer ? (
                         <ServerDetailView 
-                            server={activeServer}
-                            metrics={metrics}
-                            isLoading={isMetricsLoading}
-                            error={metricsError}
-                            onRefresh={refreshMetrics}
-                        />
+                                server={activeServer}
+                                metrics={mergedMetrics}
+                                isLoading={isMetricsLoading}
+                                error={metricsError} 
+                                onRefresh={async () => {
+                                    if (activeServer) {
+                                      await refreshServers();
+                                    }
+                                }}
+                                                        />
                     ) : (
                         <ManagementPanel
                             servers={servers}
@@ -206,4 +204,3 @@ const Home: FC = () => {
 };
 
 export default Home;
-

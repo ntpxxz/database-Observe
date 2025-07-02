@@ -1,6 +1,6 @@
-// mssqlDriver.ts - เวอร์ชันที่รวมจุดแข็งจากโค้ดชุดแรกและชุดที่สอง
+// mssqlDriver.ts - Optimized version with proper API structure
 
-import sql, { ConnectionPool } from "mssql";
+import sql, { ConnectionPool, IResult } from "mssql";
 import {
   Driver as IDriver,
   Metrics,
@@ -9,293 +9,178 @@ import {
   PerformanceInsight,
   AnyPool,
 } from "@/types";
-import { ms } from "zod/v4/locales";
-const SQL_QUERIES = {
-  connections: `
-  SELECT COUNT(*) as value FROM sys.dm_exec_connections
-`,
-  slowQueriesHistorical: `
-  SELECT TOP 10
-    qs.sql_handle,
-    qs.execution_count as calls,
-    qs.total_elapsed_time / qs.execution_count as mean_exec_time_ms,
-    st.text as query_text
-  FROM sys.dm_exec_query_stats qs
-  CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
-  WHERE qs.execution_count > 0
-  ORDER BY mean_exec_time_ms DESC
-`,
-  longRunningQueries: `
-  SELECT
-    r.session_id,
-    r.status,
-    r.start_time,
-    r.command,
-    r.total_elapsed_time,
-    t.text as query_text
-  FROM sys.dm_exec_requests r
-  CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
-  WHERE r.status = 'running'
-  ORDER BY r.total_elapsed_time DESC
-`,
-  blockingQueries: `
-  SELECT
-    blocking_session_id,
-    session_id as blocked_session_id,
-    wait_type,
-    wait_time,
-    wait_resource
-  FROM sys.dm_exec_requests
-  WHERE blocking_session_id <> 0
-`,
-  dbStats: `
-  SELECT
-    SUM(size) * 8 / 1024 as total_size_mb
-  FROM sys.master_files
-  WHERE database_id = DB_ID()
-`,
-  runningQueries: `
-  SELECT
-    r.session_id,
-    r.status,
-    r.start_time,
-    r.command,
-    r.total_elapsed_time,
-    t.text as query_text
-  FROM sys.dm_exec_requests r
-  CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) t
-  WHERE r.status = 'running'
-  ORDER BY r.total_elapsed_time DESC
-`,
-  waitStats: `
-  SELECT
-    wait_type,
-    waiting_tasks_count,
-    wait_time_ms,
-    max_wait_time_ms,
-    signal_wait_time_ms
-  FROM sys.dm_os_wait_stats
-  ORDER BY wait_time_ms DESC
-`,
-  unusedIndexes: `
-  SELECT
-    OBJECT_NAME(i.object_id) as table_name,
-    i.name as index_name,
-    i.index_id,
-    s.user_seeks,
-    s.user_scans,
-    s.user_lookups,
-    s.user_updates
-  FROM sys.indexes AS i
-  INNER JOIN sys.dm_db_index_usage_stats AS s
-    ON i.object_id = s.object_id AND i.index_id = s.index_id
-  WHERE OBJECTPROPERTY(i.object_id,'IsUserTable') = 1
-    AND i.type_desc = 'NONCLUSTERED'
-    AND s.user_seeks = 0 AND s.user_scans = 0 AND s.user_lookups = 0
-`,
-  fragmentedIndexes: `
-  SELECT
-    dbschemas.[name] as 'Schema',
-    dbtables.[name] as 'Table',
-    dbindexes.[name] as 'Index',
-    indexstats.avg_fragmentation_in_percent
-  FROM sys.dm_db_index_physical_stats (DB_ID(), NULL, NULL, NULL, 'LIMITED') indexstats
-  INNER JOIN sys.tables dbtables on dbtables.[object_id] = indexstats.[object_id]
-  INNER JOIN sys.schemas dbschemas on dbtables.[schema_id] = dbschemas.[schema_id]
-  INNER JOIN sys.indexes AS dbindexes ON dbindexes.[object_id] = indexstats.[object_id]
-    AND indexstats.index_id = dbindexes.index_id
-  WHERE indexstats.database_id = DB_ID()
-    AND indexstats.avg_fragmentation_in_percent > 20
-`,
-  missingIndexes: `
-  SELECT
-    migs.avg_total_user_cost * migs.avg_user_impact * (migs.user_seeks + migs.user_scans) AS improvement_measure,
-    mid.statement AS table_name,
-    mid.equality_columns,
-    mid.inequality_columns,
-    mid.included_columns
-  FROM sys.dm_db_missing_index_group_stats AS migs
-  INNER JOIN sys.dm_db_missing_index_groups AS mig
-    ON migs.group_handle = mig.index_group_handle
-  INNER JOIN sys.dm_db_missing_index_details AS mid
-    ON mig.index_handle = mid.index_handle
-  ORDER BY improvement_measure DESC
-`,
-  systemAnalysis: `
-  SELECT
-    SERVERPROPERTY('ProductVersion') as version,
-    SERVERPROPERTY('ProductLevel') as product_level,
-    SERVERPROPERTY('Edition') as edition,
-    SERVERPROPERTY('EngineEdition') as engine_edition
-`,
-  connectionDetails: `
-  SELECT
-    session_id,
-    login_name,
-    status,
-    host_name,
-    program_name,
-    client_interface_name
-  FROM sys.dm_exec_sessions
-  WHERE is_user_process = 1
-`,
-  performanceMetrics: `
-  SELECT
-    cpu_count,
-    hyperthread_ratio,
-    physical_memory_kb,
-    committed_kb,
-    committed_target_kb
-  FROM sys.dm_os_sys_info
-`,
-  tempdb_overallUsage: `
-SELECT
-  SUM(user_object_reserved_page_count) * 8 / 1024.0 as user_objects_mb,
-  SUM(internal_object_reserved_page_count) * 8 / 1024.0 as internal_objects_mb,
-  SUM(unallocated_extent_page_count) * 8 / 1024.0 as free_space_mb,
-  SUM(total_page_count) * 8 / 1024.0 as total_space_mb
-FROM sys.dm_db_file_space_usage;
-`,
+import { SQL_QUERIES } from "@/lib/sqlQueries"; // Import externalized queries
 
-  /**
-   * ตรวจสอบว่า Session ใดกำลังใช้งาน TempDB อยู่บ้าง
-   * เหมาะสำหรับการหาต้นตอของปัญหา TempDB โตผิดปกติ
-   */
-  tempdb_sessionUsage: `
-  SELECT
-    s.session_id,
-    s.login_name,
-    s.host_name,
-    s.program_name,
-    (tsu.user_objects_alloc_page_count + tsu.internal_objects_alloc_page_count) * 8 / 1024.0 as usage_mb,
-    req_text.text as query_text
-  FROM sys.dm_db_session_space_usage AS tsu
-  INNER JOIN sys.dm_exec_sessions AS s ON tsu.session_id = s.session_id
-  LEFT JOIN sys.dm_exec_requests AS req ON s.session_id = req.session_id
-  OUTER APPLY sys.dm_exec_sql_text(req.sql_handle) AS req_text
-  WHERE (tsu.user_objects_alloc_page_count + tsu.internal_objects_alloc_page_count) > 0
-  ORDER BY usage_mb DESC;
-`,
-  // === [NEW] Deadlock Analysis Query ===
-  /**
-   * ดึงข้อมูล Deadlock graph จาก Extended Events (system_health session)
-   * นี่คือวิธีมาตรฐานและดีที่สุดในการตรวจสอบ Deadlock ที่เคยเกิดขึ้น
-   */
-  analysis_deadlocks: `
-WITH DeadlockReport AS (
-  SELECT
-    CAST(event_data AS xml) AS event_xml
-  FROM sys.fn_xe_file_target_read_file(
-    'system_health*.xel',
-    NULL, NULL, NULL
-  )
-  WHERE object_name = 'xml_deadlock_report'
-)
-SELECT
-  event_xml.value('(//@timestamp)[1]', 'datetime2') AS deadlock_time,
-  event_xml.value('(//process-list/process/@id)[1]', 'varchar(100)') AS process_id_1,
-  event_xml.value('(//process-list/process/inputbuf)[1]', 'nvarchar(max)') AS query_1,
-  event_xml.value('(//process-list/process/@id)[2]', 'varchar(100)') AS process_id_2,
-  event_xml.value('(//process-list/process/inputbuf)[2]', 'nvarchar(max)') AS query_2,
-  event_xml.value('(//resource-list/objectlock/@objectname)[1]', 'sysname') as locked_resource,
-  event_xml AS deadlock_graph
-FROM DeadlockReport
-ORDER BY deadlock_time DESC;
-`,
+// Constants
+const HIGH_TEMPDB_USAGE_MB = 100;
+const LONG_RUNNING_THRESHOLD_MS = 5000;
 
-HitRatio:
-`SELECT
-    (CAST(c1.cntr_value AS DECIMAL(18, 2)) / CAST(c2.cntr_value AS DECIMAL(18, 2))) * 100.0 AS cache_hit_ratio_percent
-FROM
-    sys.dm_os_performance_counters c1
-JOIN
-    sys.dm_os_performance_counters c2 ON c1.object_name = c2.object_name
-WHERE
-    c1.object_name LIKE '%Buffer Manager%' AND c1.counter_name = 'Buffer cache hit ratio'
-AND
-    c2.object_name LIKE '%Buffer Manager%' AND c2.counter_name = 'Buffer cache hit ratio base'`;
+const createInsight = (
+  data: any,
+  type: PerformanceInsight["type"],
+  title: string,
+  messageBuilder: (d: any) => string,
+  severity: PerformanceInsight['severity'] = 'warning'
+): PerformanceInsight => {
+  const actualQuery =
+    data.query_1 ||
+    data.query_2 ||
+    data.current_query ||
+    data.query_text ||
+    data.blocking_query ||
+    data.query ||
+    data.details?.query ||
+    'N/A';
+
+  const filteredData = { ...data };
+  delete filteredData.query_text;
+  delete filteredData.blocking_query;
+  delete filteredData.query_1;
+  delete filteredData.query_2;
+  delete filteredData.current_query;
+  delete filteredData.query;
+
+  return {
+    id: `${type}_${data.session_id || data.blocking_session_id || data.process_id_1 || Math.random().toString(36).substr(2, 9)}`,
+    type,
+    title,
+    message: messageBuilder(data),
+    details: {
+      ...filteredData,
+      query: actualQuery,
+    },
+    severity,
+    timestamp: new Date().toISOString(),
+  };
 };
 
-/**
- * Insight Generator - รวม logic แปลง query result เป็น PerformanceInsight
- */
+// แก้ไขการกรอง Query ให้แม่นยำมากขึ้น
+const isUserQuery = (q: any): boolean => {
+  const programName = String(q.program_name || '').toLowerCase();
+  const loginName = String(q.login_name || '').toLowerCase();
+  const queryText = String(
+    q.query_text || 
+    q.current_query || 
+    q.blocking_query || 
+    q.query_1 || 
+    q.query_2 || 
+    q.query || 
+    ''
+  ).toLowerCase();
+
+  // กรอง monitoring/system queries ออก
+  const systemPrograms = [
+    'observeapp',
+    'sqlcmd',
+    'ssms',
+    'azure data studio',
+    'microsoft sql server management studio',
+    'datagrip',
+    'dbeaver'
+  ];
+
+  // ตรวจสอบ program name
+  if (systemPrograms.some(sys => programName.includes(sys))) {
+    return false;
+  }
+
+  // ตรวจสอบ query patterns ที่เป็น system/monitoring queries
+  const systemQueryPatterns = [
+    'dm_exec_', 'sys.dm_', 'dm_os_', 'dm_db_',
+    'observeapp', 'health-check', 'monitor',
+    'performance_counters', 'wait_stats',
+    'sys.databases', 'sys.dm_exec_sessions',
+    'sys.dm_exec_requests', 'sys.dm_exec_query_stats'
+  ];
+
+  if (systemQueryPatterns.some(pattern => queryText.includes(pattern))) {
+    return false;
+  }
+
+  // กรอง system logins
+  const systemLogins = ['monitor', 'system', 'health', 'observeapp'];
+  if (systemLogins.some(sys => loginName.includes(sys))) {
+    return false;
+  }
+
+  // ถ้าไม่มี program_name และ query_text ว่าง อาจเป็น system process
+  if (!programName && !queryText.trim()) {
+    return false;
+  }
+
+  return true;
+};
+
 function generateInsights(data: {
   slowQueries: any[];
   runningQueries: any[];
   blockingQueries: any[];
-  deadlocks: any[]; // เพิ่ม parameter ใหม่
-  tempdbUsage: any[]; // เพิ่ม parameter ใหม่
+  deadlocks: any[];
+  tempdbUsage: any[];
 }): PerformanceInsight[] {
   const insights: PerformanceInsight[] = [];
 
-  data.slowQueries.forEach((q, i) => {
-    const severity = q.mean_exec_time_ms > 10000 ? "critical" : "warning";
-    insights.push({
-      id: `slow_${i}`,
-      type: "slow_query",
-      severity,
-      title: "Slow Historical Query",
-      message: `Executed ${q.calls} times, avg ${Math.round(
-        q.mean_exec_time_ms
-      )}ms`,
-      details: q,
-      timestamp: new Date().toISOString(),
+  // กรอง slow queries ที่เป็น user queries เท่านั้น
+  data.slowQueries
+    .filter(isUserQuery)
+    .forEach(q => {
+      insights.push(createInsight(
+        q, 
+        'slow_query', 
+        'Slow Historical Query Detected', 
+        d => `Query averaging ${Math.round(d.mean_exec_time_ms / 1000)}s over ${d.calls} executions`
+      ));
     });
+
+  // กรอง running queries ที่ใช้เวลานานและเป็น user queries
+  data.runningQueries
+    .filter(q => q.total_elapsed_time > LONG_RUNNING_THRESHOLD_MS)
+    .filter(isUserQuery)
+    .forEach(q => {
+      insights.push(createInsight(
+        q, 
+        'long_running_query', 
+        'Long Running Query', 
+        d => `Query has been running for ${Math.round(d.total_elapsed_time / 1000)}s (${d.percent_complete || 0}% complete)`
+      ));
+    });
+
+  // กรอง blocking queries ที่เป็น user queries
+  data.blockingQueries
+    .filter(isUserQuery)
+    .forEach(q => {
+      insights.push(createInsight(
+        q, 
+        'blocking_query', 
+        'Query Blocking Detected', 
+        d => `Session ${d.blocking_session_id} (${d.blocker_login}) is blocking session ${d.blocked_session_id} (${d.blocked_login}) for ${Math.round(d.wait_duration_ms / 1000)}s`, 
+        'critical'
+      ));
+    });
+
+  // Deadlocks ไม่ต้องกรอง เพราะเป็นปัญหาระบบ
+  data.deadlocks.forEach(d => {
+    insights.push(createInsight(
+      d, 
+      'deadlock_event', 
+      'Deadlock Event Detected', 
+      d => `Deadlock occurred at ${d.deadlock_time} involving processes ${d.process_id_1} and ${d.process_id_2}`, 
+      'critical'
+    ));
   });
 
-  data.deadlocks.forEach((d, i) => {
-    insights.push({
-      id: `deadlock_${i}`,
-      type: "deadlock_event",
-      severity: "critical",
-      title: "Deadlock Detected",
-      message: `Deadlock occurred at ${d.deadlock_time}, involving processes ${d.process_id_1} and ${d.process_id_2}.`,
-      details: d, // ส่ง deadlock_graph ทั้งหมดไปใน details
-      timestamp: new Date().toISOString(),
+  // กรอง TempDB usage ที่เป็น user queries
+  data.tempdbUsage
+    .filter(t => t.usage_mb > HIGH_TEMPDB_USAGE_MB)
+    .filter(isUserQuery)
+    .forEach(t => {
+      insights.push(createInsight(
+        t, 
+        'high_tempdb_usage', 
+        'High TempDB Usage', 
+        d => `Session ${d.session_id} (${d.login_name}) is using ${Math.round(d.usage_mb)} MB of TempDB space`
+      ));
     });
-  });
-
-  // [NEW] Insight for TempDB Usage
-  data.tempdbUsage.forEach((t, i) => {
-    // สร้าง insight ก็ต่อเมื่อมีการใช้งานเกินเกณฑ์ที่กำหนด (เช่น 500MB)
-    if (t.usage_mb > 500) {
-      insights.push({
-        id: `tempdb_high_usage_${i}`,
-        type: "high_tempdb_usage",
-        severity: "warning",
-        title: "High TempDB Usage",
-        message: `Session ${t.session_id} (${
-          t.login_name
-        }) is using ${Math.round(t.usage_mb)} MB of TempDB.`,
-        details: t,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  });
-
-  data.runningQueries.forEach((q, i) => {
-    insights.push({
-      id: `running_${i}`,
-      type: "long_running_query",
-      severity: "warning",
-      title: "Long Running Query",
-      message: `Running ${Math.round(q.total_elapsed_time / 1000)} sec`,
-      details: q,
-      timestamp: new Date().toISOString(),
-    });
-  });
-
-  data.blockingQueries.forEach((q, i) => {
-    insights.push({
-      id: `blocking_${i}`,
-      type: "blocking_query",
-      severity: "critical",
-      title: "Blocking Detected",
-      message: `Session ${q.blocking_session_id} blocking ${q.blocked_session_id}`,
-      details: q,
-      timestamp: new Date().toISOString(),
-    });
-  });
 
   return insights;
 }
@@ -303,139 +188,145 @@ function generateInsights(data: {
 const mssqlDriver: IDriver = {
   connect: async (config: any): Promise<AnyPool> => {
     const pool = new sql.ConnectionPool({
-      server: config.server,
-      user: config.user,
-      password: config.password,
-      database: config.database,
+      user: config.connectionUsername,
+      password: config.credentialReference,
+      database: config.databaseName,
       port: config.port,
-      options: config.options || {
-        encrypt: false,
+      server: config.serverHost,
+      connectionTimeout: config.connectionTimeout || 30000,
+      requestTimeout: config.requestTimeout || 30000,
+      options: {
+        encrypt: config.encrypt || false,
         trustServerCertificate: true,
         enableArithAbort: true,
+        appName: "ObserveApp-Monitor", // เปลี่ยนชื่อให้ชัดเจนขึ้น
       },
+      pool: {
+        max: config.poolMax || 10,
+        min: config.poolMin || 0,
+        idleTimeoutMillis: config.idleTimeout || 30000,
+      }
     });
-    return await pool.connect();
+    await pool.connect();
+    return pool;
   },
 
   disconnect: async (pool: AnyPool): Promise<void> => {
     await (pool as ConnectionPool).close();
   },
 
-// ในไฟล์ mssqlDriver.ts
-
-getMetrics: async (pool: AnyPool): Promise<Partial<Metrics>> => {
-  const mssqlPool = pool as ConnectionPool;
-  try {
-    // เรารันแค่ 5 Queries พื้นฐานที่ทำงานได้แน่นอน
-    const [conn, slow, run, block, dbStat] = await Promise.all([
+  getMetrics: async (pool: AnyPool): Promise<Partial<Metrics>> => {
+    const mssqlPool = pool as ConnectionPool;
+    const results = await Promise.allSettled([
       mssqlPool.request().query(SQL_QUERIES.connections),
-      mssqlPool.request().query(SQL_QUERIES.slowQueriesHistorical),
-      mssqlPool.request().query(SQL_QUERIES.longRunningQueries),
+      mssqlPool.request().query(SQL_QUERIES.cacheHitRate),
+      mssqlPool.request().query(SQL_QUERIES.cpuPressure),
+      mssqlPool.request().query(SQL_QUERIES.dbSize),
+      mssqlPool.request().input("threshold", sql.Int, LONG_RUNNING_THRESHOLD_MS).query(SQL_QUERIES.longRunningQueries),
       mssqlPool.request().query(SQL_QUERIES.blockingQueries),
-      mssqlPool.request().query(SQL_QUERIES.dbStats),
+      mssqlPool.request().query(SQL_QUERIES.slowQueriesHistorical),
+      mssqlPool.request().query(SQL_QUERIES.deadlockAnalysis),
+      mssqlPool.request().query(SQL_QUERIES.tempdbSessionUsage),
     ]);
+    const getResult = (r: PromiseSettledResult<IResult<any>>) => r.status === 'fulfilled' ? r.value.recordset : [];
 
-    // FIX: ส่ง Array ว่างเปล่าสำหรับข้อมูลที่เราไม่ได้ดึงมา
-    // เพื่อไม่ให้เกิด Error `undefined.recordset`
     const insights = generateInsights({
-      slowQueries: slow.recordset,
-      runningQueries: run.recordset,
-      blockingQueries: block.recordset,
-      deadlocks: [], // <-- FIX: ส่งค่าว่างไปก่อน
-      tempdbUsage: [], // <-- FIX: ส่งค่าว่างไปก่อน
+      runningQueries: getResult(results[4]),
+      blockingQueries: getResult(results[5]),
+      slowQueries: getResult(results[6]),
+      deadlocks: getResult(results[7]),
+      tempdbUsage: getResult(results[8]),
     });
-
-    const db = dbStat.recordset[0];
 
     return {
       kpi: {
-        connections: conn.recordset[0]?.value ?? 0,
-        databaseSize: Math.round(db?.total_size_mb || 0),
+        connections: getResult(results[0])[0]?.connection_count || 0,
+        cpu: Math.round(100 - (getResult(results[2])[0]?.cpu_pressure_percent || 0))
       },
       stats: {
-        slowQueries: slow.recordset.length,
-        runningQueries: run.recordset.length,
-        blockingQueries: block.recordset.length,
-        deadlocks: 0, // <-- FIX: กำหนดค่าเริ่มต้นเป็น 0
+        cache_hit_rate: Math.round(getResult(results[1])[0]?.cache_hit_ratio_percent || 0),
+        databaseSize: Math.round(getResult(results[3])[0]?.total_size_mb || 0),
       },
       performanceInsights: insights,
     };
-  } catch (err: any) {
-    // ส่วนของ Error handling เดิม
-    console.error("[MSSQL Driver] Metrics error:", err.message);
-    return {
-      performanceInsights: [{
-        id: 'error_metrics_001',
-        type: 'error',
-        severity: 'critical',
-        title: 'Metrics Collection Failed',
-        message: err.message,
-        timestamp: new Date().toISOString(),
-        details: { query: 'N/A - No query text available' },
-      }],
-      error: err.message,
-    };
-  }
-},
+  },
 
   getQueryAnalysis: async (pool: AnyPool): Promise<QueryAnalysis> => {
     const mssqlPool = pool as ConnectionPool;
-    const [run, slow, block, wait, deadlocks, tempdb ] = await Promise.all([
+    const results = await Promise.allSettled([
       mssqlPool.request().query(SQL_QUERIES.runningQueries),
       mssqlPool.request().query(SQL_QUERIES.slowQueriesHistorical),
       mssqlPool.request().query(SQL_QUERIES.blockingQueries),
       mssqlPool.request().query(SQL_QUERIES.waitStats),
-      mssqlPool.request().query(SQL_QUERIES.analysis_deadlocks), // เพิ่มการดึงข้อมูล Deadlock
-      mssqlPool.request().query(SQL_QUERIES.tempdb_sessionUsage), // เพิ่มการดึงข้อมูล TempDB Session Usage
+      mssqlPool.request().query(SQL_QUERIES.deadlockAnalysis),
+      mssqlPool.request().query(SQL_QUERIES.tempdbSessionUsage),
     ]);
+    const getResult = (r: PromiseSettledResult<IResult<any>>) => r.status === 'fulfilled' ? r.value.recordset : [];
+    
+    // กรอง queries ที่เป็น user queries เท่านั้น
     return {
-      runningQueries: run.recordset,
-      slowQueries: slow.recordset,
-      blockingQueries: block.recordset,
-      waitStats: wait.recordset,
-      deadlocks: deadlocks.recordset,
-      tempdbUsage: tempdb.recordset, // เพิ่ม TempDB Usage
+      runningQueries: getResult(results[0]).filter(isUserQuery),
+      slowQueries: getResult(results[1]).filter(isUserQuery),
+      blockingQueries: getResult(results[2]).filter(isUserQuery),
+      waitStats: getResult(results[3]), // wait stats ไม่ต้องกรอง
+      deadlocks: getResult(results[4]), // deadlocks ไม่ต้องกรอง
+      tempdbUsage: getResult(results[5]).filter(isUserQuery),
     };
   },
 
-  getOptimizationSuggestions: async (
-    pool: AnyPool
-  ): Promise<OptimizationSuggestions> => {
+  getOptimizationSuggestions: async (pool: AnyPool): Promise<OptimizationSuggestions> => {
     const mssqlPool = pool as ConnectionPool;
-    const [unused, fragmented, missing] = await Promise.all([
+    const results = await Promise.allSettled([
       mssqlPool.request().query(SQL_QUERIES.unusedIndexes),
       mssqlPool.request().query(SQL_QUERIES.fragmentedIndexes),
       mssqlPool.request().query(SQL_QUERIES.missingIndexes),
     ]);
+    const getResult = (r: PromiseSettledResult<IResult<any>>) => r.status === 'fulfilled' ? r.value.recordset : [];
     return {
-      unusedIndexes: unused.recordset,
-      fragmentedIndexes: fragmented.recordset,
-      missingIndexes: missing.recordset,
+      unusedIndexes: getResult(results[0]),
+      fragmentedIndexes: getResult(results[1]),
+      missingIndexes: getResult(results[2]),
     };
   },
 
   analyzeDatabaseHealth: async (pool: AnyPool): Promise<any> => {
     const mssqlPool = pool as ConnectionPool;
-    const [system, connections, performance] = await Promise.all([
+    const results = await Promise.allSettled([
       mssqlPool.request().query(SQL_QUERIES.systemAnalysis),
       mssqlPool.request().query(SQL_QUERIES.connectionDetails),
       mssqlPool.request().query(SQL_QUERIES.performanceMetrics),
+      mssqlPool.request().query(SQL_QUERIES.tempdbUsage),
     ]);
+    const getResult = (r: PromiseSettledResult<IResult<any>>) => r.status === 'fulfilled' ? r.value.recordset : [];
+    const connections = getResult(results[1]);
+    const tempdb = getResult(results[3])[0] || {};
+
+    // กรอง connections แต่เก็บข้อมูลทั้งหมดไว้เพื่อแสดง programs
+    const userConnections = connections.filter(isUserQuery);
+    const programs = connections.map(c => ({
+      from: c.client_net_address ?? 'unknown',
+      details: c.program_name ?? 'unknown'
+    }));
 
     return {
-      system: system.recordset[0],
+      system: getResult(results[0])[0] || {},
       connections: {
-        total: connections.recordset.length,
-        active: connections.recordset.filter((c) => c.status === "running")
-          .length,
-        details: connections.recordset,
+        total: connections.length,
+        active: connections.filter(c => c.status === "running").length,
+        user_connections: userConnections.length, // เพิ่มข้อมูล user connections
+        details: userConnections, // แสดง user connections เท่านั้น
+        programs, // แสดง programs ทั้งหมด
       },
-      performance: performance.recordset[0],
+      performance: getResult(results[2])[0] || {},
+      tempdb: {
+        ...tempdb,
+        usage_percentage: tempdb.total_space_mb > 0
+          ? Math.round(((tempdb.total_space_mb - tempdb.free_space_mb) / tempdb.total_space_mb) * 100)
+          : 0
+      },
       timestamp: new Date().toISOString(),
     };
   },
 };
 
 export default mssqlDriver;
-
-// sqlQueries.ts - MSSQL queries used by mssqlDriver

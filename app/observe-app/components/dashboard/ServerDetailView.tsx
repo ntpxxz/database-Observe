@@ -97,16 +97,16 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     }
   };
   const totalMemoryInMb = useMemo(() => {
-    if (!metrics?.hardware?.databaseMetrics) {
+    if (!metrics?.hardware?.ram?.databaseMetrics) {
       return null;
     }
-    return metrics.hardware.databaseMetrics.reduce(
+    return metrics.hardware.ram.databaseMetrics.reduce(
       (sum, db) => sum + db.memory_in_buffer_mb,
       0
     );
-  }, [metrics]); // คำนวณใหม่เมื่อ metrics เปลี่ยน
+  }, [metrics]); 
 
-  // ... ส่วนของ if (isLoading), if (error), if (!metrics) ..
+ 
   if (isLoading) return <LoadingSkeleton />;
   if (error) return <ErrorDisplay error={error} onRetry={handleRefresh} />;
   if (!metrics)
@@ -179,8 +179,8 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               icon={<Cpu size={24} />}
               title="CPU Pressure"
               value={
-                metrics.hardware?.cpuUsage !== undefined
-                  ? Math.round(metrics.hardware.cpuUsage)
+                metrics.hardware.kpi?.cpu !== undefined
+                  ? Math.round(metrics.hardware.kpi.cpu)
                   : null
               }
               unit="%"
@@ -222,7 +222,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
 
             <PerformanceInsightsTable
               key={server.inventoryID} // Force re-mount when server changes
-              insights={metrics?.performanceInsights}
+              insights={metrics.performanceInsights}
               serverName={server.systemName}
               isLoading={isLoading}
             />
@@ -268,15 +268,17 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               </div>
             ) : (
               <dl className="space-y-2">
-                <DetailItem label="CPU Usage" value={`${metrics.kpi.cpu}%`} />
+                <DetailItem label="CPU Usage" value={`${metrics.hardware.kpi.cpu}%`} />
                 <DetailItem
                   label="Memory Usage"
-                  value={`${metrics.kpi.memory}%`}
+                  value={
+                    totalMemoryInMb !== null ? Math.round(totalMemoryInMb) : null
+                  }
                 />
-                <DetailItem label="Disk I/O" value={`${metrics.kpi.disk}%`} />
+                <DetailItem label="Disk I/O" value={`${metrics.hardware.kpi.disk_iops}`} />
                 <DetailItem
                   label="Active Connections"
-                  value={metrics.kpi.connections}
+                  value={metrics.data.kpi.connections}
                 />
               </dl>
             )}
