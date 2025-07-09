@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryAppDb } from '@/lib/db';
+import { queryAppDb } from '@/lib/connectionManager';
 
 // GET /api/inventory/[id]
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {

@@ -11,7 +11,7 @@ import {
 import mssqlDriver from "@/lib/drivers/mssqlDriver";
 import postgresDriver from "@/lib/drivers/postgresDriver";
 import mysqlDriver from "@/lib/drivers/mysqlDriver";
-import { queryAppDb } from "@/lib/db";
+import { queryAppDb } from "@/lib/connectionManager";
 
 const drivers: { [key: string]: Driver } = {
   MSSQL: mssqlDriver,

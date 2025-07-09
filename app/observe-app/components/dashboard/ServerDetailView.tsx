@@ -1,5 +1,5 @@
 import React, { FC, useState, useMemo } from "react";
-import { DatabaseInventory, ServerMetrics } from "@/types";
+import { DatabaseInventory, PerformanceInsight, ServerMetrics } from "@/types";
 import { KPIWidget } from "./KPIWidget";
 import {
   Cpu,
@@ -11,7 +11,7 @@ import {
   Clock,
   RefreshCw,
   ShieldCheck,
-  Database,
+
 } from "lucide-react";
 import { DatabaseTableView } from "./DatabaseTableView";
 
@@ -20,6 +20,9 @@ interface ServerDetailViewProps {
   metrics: ServerMetrics | null;
   isLoading: boolean;
   error: string | null;
+  insights?: PerformanceInsight[] | null;
+  insightsLoading?: boolean;
+  insightError?: string | null;
   onRefresh: () => void;
 }
 interface DetailItemProps {
@@ -74,6 +77,9 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   isLoading,
   error,
   onRefresh,
+  insights,
+  insightsLoading,
+  insightError,
 }) => {
   const [activeTab, setActiveTab] = useState<"performance" | "hardware">(
     "performance"
@@ -231,7 +237,27 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               unit=""
               color="amber"
             />
-          </section>{" "}         
+          </section>{" "}   
+
+           {/* ✅ NEW: Problematic Queries Section */}
+    <section className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+      <h3 className="text-xl font-semibold mb-4 text-white flex items-center">
+        <AlertCircle size={20} className="mr-2 text-red-400" />
+        Problematic Queries
+      </h3>
+      {insightsLoading ? (
+        <p className="text-slate-400 text-sm">Loading query insights...</p>
+      ) : insightError ? (
+        <div className="text-red-400 text-sm">
+          <AlertCircle size={14} className="inline mr-1" />
+          {insightError}
+        </div>
+      ) : insights?.length ? (
+        <PerformanceInsightsTable insights={insights} />
+      ) : (
+        <p className="text-slate-500 text-sm">No significant query issues found.</p>
+      )}
+    </section>      
             
             {metrics?.databaseInfo && (
             <DatabaseTableView

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "mssql";
-import { queryAppDb } from "@/lib/db";
+import { queryAppDb } from "@/lib/connectionManager";
 
 export async function GET(
   request: NextRequest,

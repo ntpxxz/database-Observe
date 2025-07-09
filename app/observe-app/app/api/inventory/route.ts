@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Driver } from '@/types';
-import { queryAppDb } from '@/lib/db';
+import { queryAppDb } from '@/lib/connectionManager';
 import mssqlDriver from '@/lib/drivers/mssqlDriver';
 import mysqlDriver from '@/lib/drivers/mysqlDriver';
 import postgresDriver from '@/lib/drivers/postgresDriver';

@@ -118,6 +118,32 @@ const useHardwareMetrics = (server: DatabaseInventory | null) => {
 
   return { hardware, hardwareError, refreshHardware: fetchHardware };
 };
+const useQueryInsights = (server: DatabaseInventory | null) => {
+  const [insights, setInsights] = useState<PerformanceInsight[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchInsights = useCallback(async () => {
+    if (!server?.inventoryID) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/inventory/${server.inventoryID}/query-insight`);
+      if (!res.ok) throw new Error("Failed to fetch query insights");
+      const json = await res.json();
+      setInsights(json);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [server?.inventoryID]);
+
+  useEffect(() => {
+    if (server) fetchInsights();
+  }, [server, fetchInsights]);
+
+  return { insights, error, loading };
+};
 
 const Home: FC = () => {
   const [modal, setModal] = useState<{
@@ -126,15 +152,17 @@ const Home: FC = () => {
   }>({ type: null });
   
   // Use custom hooks to manage state and data fetching
+  const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(
+    null
+  );
+  const { insights, error: insightError, loading: insightLoading } = useQueryInsights(activeServer);
+
   const {  
     servers,
     isLoading: isInventoryLoading,
     error: inventoryError,
     refreshServers,
   } = useInventoryManager();
-  const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(
-    null
-  );
   const {
     metrics,
     isLoading: isMetricsLoading,
@@ -281,15 +309,20 @@ const Home: FC = () => {
           <p className="text-center py-20 text-slate-400">Loading Inventory...</p>
         ) : activeServer ? (
           <>
-            <ServerDetailView
-              server={activeServer}
-              metrics={mergedMetrics}
-              isLoading={isMetricsLoading}
-              error={metricsError}
-              onRefresh={async () => {
-                await refreshServers();
-              }}
-            />
+<ServerDetailView
+  server={activeServer}
+  metrics={mergedMetrics}
+  isLoading={isMetricsLoading}
+  error={metricsError}
+  onRefresh={async () => {
+    await refreshServers();
+  }}
+  insights={insights}
+  insightsLoading={insightLoading}
+  insightError={insightError}
+/>
+
+       
 
             {metrics?.databases && (
               <DatabaseTableView 
