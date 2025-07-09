@@ -14,7 +14,7 @@ export async function GET(
     const result = await queryAppDb(
       `SELECT 
           InventoryID as inventoryID, SystemName as systemName, ServerHost as serverHost, 
-          Port as port, DatabaseName as databaseName, DatabaseType as databaseType, 
+          Port as port, DatabaseType as databaseType, 
           ConnectionUsername as connectionUsername, CredentialReference as credentialReference
         FROM IT_ManagementDB.dbo.databaseInventory
         WHERE inventoryID = @id`,

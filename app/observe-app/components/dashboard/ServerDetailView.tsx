@@ -1,7 +1,6 @@
 import React, { FC, useState, useMemo } from "react";
 import { DatabaseInventory, ServerMetrics } from "@/types";
 import { KPIWidget } from "./KPIWidget";
-import { PerformanceInsightsTable } from "./PerformanceInsightsTable";
 import {
   Cpu,
   MemoryStick,
@@ -12,8 +11,9 @@ import {
   Clock,
   RefreshCw,
   ShieldCheck,
-  TrendingUp,
+  Database,
 } from "lucide-react";
+import { DatabaseTableView } from "./DatabaseTableView";
 
 interface ServerDetailViewProps {
   server: DatabaseInventory;
@@ -104,9 +104,8 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
       (sum, db) => sum + db.memory_in_buffer_mb,
       0
     );
-  }, [metrics]); 
+  }, [metrics]);
 
- 
   if (isLoading) return <LoadingSkeleton />;
   if (error) return <ErrorDisplay error={error} onRetry={handleRefresh} />;
   if (!metrics)
@@ -118,34 +117,37 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
 
   return (
     <div className="space-y-8">
+      {/* 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <h2 className="text-2xl font-bold text-white">{server.systemName}</h2>
           <span
-            className={`px-3 py-1 rounded-full text-xs font-medium bg-${
-              serverStatus === "healthy" ? "green" : "red"
-            }-500/10 text-${serverStatus === "healthy" ? "green" : "red"}-400`}
+        className={`px-3 py-1 rounded-full text-xs font-medium bg-${
+          serverStatus === "healthy" ? "green" : "red"
+        }-500/10 text-${serverStatus === "healthy" ? "green" : "red"}-400`}
           >
-            {serverStatus.toUpperCase()}
+        {serverStatus.toUpperCase()}
           </span>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-xs text-slate-400 flex items-center gap-1">
-            <Clock size={12} />
-            Last updated: {lastRefresh.toLocaleTimeString()}
+        <Clock size={12} />
+        Last updated: {lastRefresh.toLocaleTimeString()}
           </span>
           <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
-            title="Refresh data"
+        onClick={handleRefresh}
+        disabled={isLoading}
+        className="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+        title="Refresh data"
           >
-            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+        <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
           </button>
         </div>
-      </div>
+      </div> 
+      
+      */}
 
       <div className="border-b border-slate-800">
+      <div className="flex items-center justify-between pb-4">
         <nav className="-mb-px flex space-x-6" role="tablist">
           <button
             onClick={() => setActiveTab("performance")}
@@ -170,8 +172,24 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
             Hardware
           </button>
         </nav>
-      </div>
+        <nav className="flex items-center gap-4">
+          <span className="text-xs text-slate-400 flex items-center gap-1">
+            <Clock size={12} />
+            Last updated: {lastRefresh.toLocaleTimeString()}
+          </span>
+          <button
+            onClick={handleRefresh}
+            disabled={isLoading}
+            className="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+            title="Refresh data"
+          >
+            <RefreshCw size={16} className={isLoading ? "animate-spin" : ""} />
+          </button>
+        </nav>
 
+
+      </div>
+      </div>
       {activeTab === "performance" && (
         <div className="space-y-8">
           <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -213,21 +231,20 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               unit=""
               color="amber"
             />
-          </section>{" "}
-          <div className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-            <h3 className="text-xl font-semibold mb-4 text-white">
-              <TrendingUp className="mr-3 text-sky-400" />
-              Database Performance Insights
-            </h3>
-
-            <PerformanceInsightsTable
-              key={server.inventoryID} // Force re-mount when server changes
-              insights={metrics.performanceInsights}
-              serverName={server.systemName}
-              isLoading={isLoading}
+          </section>{" "}         
+            
+            {metrics?.databaseInfo && (
+            <DatabaseTableView
+              databaseInfo={metrics.databaseInfo || []}
             />
+            )}
+            {!metrics?.databaseInfo && (
+              <div className="text-slate-500 text-sm">
+                No database information available.
+              </div>
+            )}  
           </div>
-        </div>
+       
       )}
 
       {activeTab === "hardware" && (
@@ -268,14 +285,22 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               </div>
             ) : (
               <dl className="space-y-2">
-                <DetailItem label="CPU Usage" value={`${metrics.hardware.kpi.cpu}%`} />
+                <DetailItem
+                  label="CPU Usage"
+                  value={`${metrics.hardware.kpi.cpu}%`}
+                />
                 <DetailItem
                   label="Memory Usage"
                   value={
-                    totalMemoryInMb !== null ? Math.round(totalMemoryInMb) : null
+                    totalMemoryInMb !== null
+                      ? Math.round(totalMemoryInMb)
+                      : null
                   }
                 />
-                <DetailItem label="Disk I/O" value={`${metrics.hardware.kpi.disk_iops}`} />
+                <DetailItem
+                  label="Disk I/O"
+                  value={`${metrics.hardware.kpi.disk_iops}`}
+                />
                 <DetailItem
                   label="Active Connections"
                   value={metrics.data.kpi.connections}

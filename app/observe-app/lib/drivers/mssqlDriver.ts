@@ -8,9 +8,9 @@ import {
   OptimizationSuggestions,
   PerformanceInsight,
   AnyPool,
+  DatabaseConnectionConfig,
 } from "@/types";
 import { SQL_QUERIES } from "@/lib/sqlQueries"; // Import externalized queries
-
 // Constants
 const HIGH_TEMPDB_USAGE_MB = 100;
 const LONG_RUNNING_THRESHOLD_MS = 5000;
@@ -54,7 +54,6 @@ const createInsight = (
   };
 };
 
-// แก้ไขการกรอง Query ให้แม่นยำมากขึ้น
 const isUserQuery = (q: any): boolean => {
   const programName = String(q.program_name || '').toLowerCase();
   const loginName = String(q.login_name || '').toLowerCase();
@@ -68,7 +67,6 @@ const isUserQuery = (q: any): boolean => {
     ''
   ).toLowerCase();
 
-  // กรอง monitoring/system queries ออก
   const systemPrograms = [
     'observeapp',
     'sqlcmd',
@@ -79,12 +77,10 @@ const isUserQuery = (q: any): boolean => {
     'dbeaver'
   ];
 
-  // ตรวจสอบ program name
   if (systemPrograms.some(sys => programName.includes(sys))) {
     return false;
   }
 
-  // ตรวจสอบ query patterns ที่เป็น system/monitoring queries
   const systemQueryPatterns = [
     'dm_exec_', 'sys.dm_', 'dm_os_', 'dm_db_',
     'observeapp', 'health-check', 'monitor',
@@ -97,19 +93,18 @@ const isUserQuery = (q: any): boolean => {
     return false;
   }
 
-  // กรอง system logins
   const systemLogins = ['monitor', 'system', 'health', 'observeapp'];
   if (systemLogins.some(sys => loginName.includes(sys))) {
     return false;
   }
 
-  // ถ้าไม่มี program_name และ query_text ว่าง อาจเป็น system process
   if (!programName && !queryText.trim()) {
     return false;
   }
 
   return true;
 };
+
 
 function generateInsights(data: {
   slowQueries: any[];
@@ -120,99 +115,82 @@ function generateInsights(data: {
 }): PerformanceInsight[] {
   const insights: PerformanceInsight[] = [];
 
-  // กรอง slow queries ที่เป็น user queries เท่านั้น
   data.slowQueries
     .filter(isUserQuery)
     .forEach(q => {
-      insights.push(createInsight(
-        q, 
-        'slow_query', 
-        'Slow Historical Query Detected', 
-        d => `Query averaging ${Math.round(d.mean_exec_time_ms / 1000)}s over ${d.calls} executions`
-      ));
+      insights.push(createInsight(q, 'slow_query', 'Slow Historical Query Detected', d => `Query averaging ${Math.round(d.mean_exec_time_ms / 1000)}s over ${d.calls} executions`));
     });
 
-  // กรอง running queries ที่ใช้เวลานานและเป็น user queries
   data.runningQueries
     .filter(q => q.total_elapsed_time > LONG_RUNNING_THRESHOLD_MS)
     .filter(isUserQuery)
     .forEach(q => {
-      insights.push(createInsight(
-        q, 
-        'long_running_query', 
-        'Long Running Query', 
-        d => `Query has been running for ${Math.round(d.total_elapsed_time / 1000)}s (${d.percent_complete || 0}% complete)`
-      ));
+      insights.push(createInsight(q, 'long_running_query', 'Long Running Query', d => `Query has been running for ${Math.round(d.total_elapsed_time / 1000)}s (${d.percent_complete || 0}% complete)`));
     });
 
-  // กรอง blocking queries ที่เป็น user queries
   data.blockingQueries
     .filter(isUserQuery)
     .forEach(q => {
-      insights.push(createInsight(
-        q, 
-        'blocking_query', 
-        'Query Blocking Detected', 
-        d => `Session ${d.blocking_session_id} (${d.blocker_login}) is blocking session ${d.blocked_session_id} (${d.blocked_login}) for ${Math.round(d.wait_duration_ms / 1000)}s`, 
-        'critical'
-      ));
+      insights.push(createInsight(q, 'blocking_query', 'Query Blocking Detected', d => `Session ${d.blocking_session_id} (${d.blocker_login}) is blocking session ${d.blocked_session_id} (${d.blocked_login}) for ${Math.round(d.wait_duration_ms / 1000)}s`, 'critical'));
     });
 
-  // Deadlocks ไม่ต้องกรอง เพราะเป็นปัญหาระบบ
   data.deadlocks.forEach(d => {
-    insights.push(createInsight(
-      d, 
-      'deadlock_event', 
-      'Deadlock Event Detected', 
-      d => `Deadlock occurred at ${d.deadlock_time} involving processes ${d.process_id_1} and ${d.process_id_2}`, 
-      'critical'
-    ));
+    insights.push(createInsight(d, 'deadlock_event', 'Deadlock Event Detected', d => `Deadlock occurred at ${d.deadlock_time} involving processes ${d.process_id_1} and ${d.process_id_2}`, 'critical'));
   });
 
-  // กรอง TempDB usage ที่เป็น user queries
   data.tempdbUsage
     .filter(t => t.usage_mb > HIGH_TEMPDB_USAGE_MB)
     .filter(isUserQuery)
     .forEach(t => {
-      insights.push(createInsight(
-        t, 
-        'high_tempdb_usage', 
-        'High TempDB Usage', 
-        d => `Session ${d.session_id} (${d.login_name}) is using ${Math.round(d.usage_mb)} MB of TempDB space`
-      ));
+      insights.push(createInsight(t, 'high_tempdb_usage', 'High TempDB Usage', d => `Session ${d.session_id} (${d.login_name}) is using ${Math.round(d.usage_mb)} MB of TempDB space`));
     });
 
   return insights;
 }
 
+const LIST_DATABASES_QUERY = `
+  SELECT name FROM sys.databases
+  WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')
+  ORDER BY name
+`;
+
 const mssqlDriver: IDriver = {
-  connect: async (config: any): Promise<AnyPool> => {
+  // In mssqlDriver.ts
+  connect: async (config: DatabaseConnectionConfig): Promise<AnyPool> => {
     const pool = new sql.ConnectionPool({
-      user: config.connectionUsername,
-      password: config.credentialReference,
-      database: config.databaseName,
+      server: config.server,
+      user: config.user,
+      password: config.password,
+      database: config.database,
       port: config.port,
-      server: config.serverHost,
       connectionTimeout: config.connectionTimeout || 30000,
       requestTimeout: config.requestTimeout || 30000,
       options: {
         encrypt: config.encrypt || false,
         trustServerCertificate: true,
         enableArithAbort: true,
-        appName: "ObserveApp-Monitor", // เปลี่ยนชื่อให้ชัดเจนขึ้น
+        appName: 'ObserveApp-Monitor'
       },
       pool: {
         max: config.poolMax || 10,
         min: config.poolMin || 0,
-        idleTimeoutMillis: config.idleTimeout || 30000,
+        idleTimeoutMillis: config.idleTimeout || 30000
       }
     });
+
     await pool.connect();
     return pool;
   },
 
+
   disconnect: async (pool: AnyPool): Promise<void> => {
     await (pool as ConnectionPool).close();
+  },
+
+  getDatabases: async (pool: AnyPool): Promise<string[]> => {
+    const mssqlPool = pool as ConnectionPool;
+    const result = await mssqlPool.request().query(LIST_DATABASES_QUERY);
+    return result.recordset.map((row: any) => row.name);
   },
 
   getMetrics: async (pool: AnyPool): Promise<Partial<Metrics>> => {
@@ -227,6 +205,7 @@ const mssqlDriver: IDriver = {
       mssqlPool.request().query(SQL_QUERIES.slowQueriesHistorical),
       mssqlPool.request().query(SQL_QUERIES.deadlockAnalysis),
       mssqlPool.request().query(SQL_QUERIES.tempdbSessionUsage),
+      mssqlPool.request().query(SQL_QUERIES.databaseInfo),
     ]);
     const getResult = (r: PromiseSettledResult<IResult<any>>) => r.status === 'fulfilled' ? r.value.recordset : [];
 
@@ -248,6 +227,18 @@ const mssqlDriver: IDriver = {
         databaseSize: Math.round(getResult(results[3])[0]?.total_size_mb || 0),
       },
       performanceInsights: insights,
+
+      databaseInfo: getResult(results[9]).map(db => ({
+        name: db.name,
+        sizeMB: db.sizeMB,
+        state: db.state_desc || 'ONLINE',
+        recoveryModel: db.recovery_model_desc,
+        compatibilityLevel: db.compatibility_level,
+        collation: db.collation_name,
+        createdDate: db.create_date,
+      }))
+      
+      
     };
   },
 
@@ -262,15 +253,14 @@ const mssqlDriver: IDriver = {
       mssqlPool.request().query(SQL_QUERIES.tempdbSessionUsage),
     ]);
     const getResult = (r: PromiseSettledResult<IResult<any>>) => r.status === 'fulfilled' ? r.value.recordset : [];
-    
-    // กรอง queries ที่เป็น user queries เท่านั้น
     return {
       runningQueries: getResult(results[0]).filter(isUserQuery),
       slowQueries: getResult(results[1]).filter(isUserQuery),
       blockingQueries: getResult(results[2]).filter(isUserQuery),
-      waitStats: getResult(results[3]), // wait stats ไม่ต้องกรอง
-      deadlocks: getResult(results[4]), // deadlocks ไม่ต้องกรอง
-      tempdbUsage: getResult(results[5]).filter(isUserQuery),
+      waitStats: getResult(results[3]),
+      deadlocks: getResult(results[4]),
+      tempdbUsage: getResult(results[5]).filter(isUserQuery),   
+      
     };
   },
 
@@ -301,7 +291,6 @@ const mssqlDriver: IDriver = {
     const connections = getResult(results[1]);
     const tempdb = getResult(results[3])[0] || {};
 
-    // กรอง connections แต่เก็บข้อมูลทั้งหมดไว้เพื่อแสดง programs
     const userConnections = connections.filter(isUserQuery);
     const programs = connections.map(c => ({
       from: c.client_net_address ?? 'unknown',
@@ -313,9 +302,9 @@ const mssqlDriver: IDriver = {
       connections: {
         total: connections.length,
         active: connections.filter(c => c.status === "running").length,
-        user_connections: userConnections.length, // เพิ่มข้อมูล user connections
-        details: userConnections, // แสดง user connections เท่านั้น
-        programs, // แสดง programs ทั้งหมด
+        user_connections: userConnections.length,
+        details: userConnections,
+        programs,
       },
       performance: getResult(results[2])[0] || {},
       tempdb: {
@@ -327,6 +316,12 @@ const mssqlDriver: IDriver = {
       timestamp: new Date().toISOString(),
     };
   },
+  getProblemQueries: function (pool: AnyPool): Promise<any> {
+    throw new Error("Function not implemented.");
+  },
+  getPerformanceInsights: function (pool: AnyPool): Promise<PerformanceInsight[] | { error: string; }> {
+    throw new Error("Function not implemented.");
+  }
 };
 
 export default mssqlDriver;

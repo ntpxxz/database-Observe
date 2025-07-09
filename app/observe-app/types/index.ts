@@ -22,6 +22,12 @@ export type DbType = 'MSSQL' | 'POSTGRES' | 'MYSQL';
 
 // Create a base connection config type
 export interface DatabaseConnectionConfig {
+  encrypt: boolean;
+  connectionTimeout: number;
+  user: string | undefined;
+  database: string | undefined;
+  password: string | undefined;
+  server: string;
   serverHost: string;
   port: number;
   databaseName: string;
@@ -128,7 +134,7 @@ export interface Metrics {
     cpuUsage: number;
     databaseMetrics: HardwareMetric[];
   } | null;
-
+  databaseInfo?: DatabaseInfo[];
   hardwareError?: string | null;
   error?: string | null;
 
@@ -156,7 +162,6 @@ export interface DatabaseInventory {
   systemName: string;
   serverHost: string;
   port: number;
-  databaseName: string;
   zone: string;
   databaseType: DbType;
   connectionUsername: string;
@@ -165,6 +170,9 @@ export interface DatabaseInventory {
   ownerContact: string;
   createdDate?: Date;
   updated_at?: Date;
+}
+export interface DatabaseInventoryWithDatabases extends DatabaseInventory {
+  databases?: string[]; // optional at runtime
 }
 
 export interface DatabaseResponse {
@@ -191,6 +199,17 @@ export interface QueryAnalysis {
   resourceUsage: ResourceUsage[];
   indexUsage: IndexUsage[];
   waitStats: WaitStat[];
+}
+
+export interface DatabaseInfo {
+  name: string;
+  sizeMB: number;
+  state: string; 
+  recoveryModel: string;
+  compatibilityLevel: string; 
+  collation: string; 
+  createdDate: Date;
+  lastBackupDate?: Date; 
 }
 
 export interface RunningQuery {

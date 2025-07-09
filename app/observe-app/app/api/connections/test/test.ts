@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
+console.log(`[TestConnection] Received body:`, body);
     driver = drivers[body.databaseType];
     if (!driver) {
       return NextResponse.json(
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const connectionConfig =
       body.databaseType === 'MSSQL'
         ? {
-            server: body.serverHost,
+            serverHost: body.serverHost,
             user: body.connectionUsername,
             password: body.credentialReference,
             database: '', // allow empty to connect to server only
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[TestConnection] config:`, {
       ...connectionConfig,
-      password: '***'
+      password: '***REDACTED***' // redact sensitive info
     });
 
     targetPool = await driver.connect(connectionConfig);

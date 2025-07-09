@@ -6,6 +6,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     const { id } = params;
 
     try {
+        // ดึงข้อมูล server
         const result = await queryAppDb(
             `SELECT * FROM IT_ManagementDB.dbo.databaseInventory WHERE InventoryID = @id`,
             { id }
@@ -15,12 +16,22 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             return NextResponse.json({ message: 'Not found' }, { status: 404 });
         }
 
-        return NextResponse.json(result.recordset[0]);
+        const server = result.recordset[0];
+
+        const databaseList = await queryAppDb(`
+            SELECT name, sizeMB = CAST(size AS FLOAT) / 128, state_desc as state
+            FROM sys.databases
+            WHERE state_desc = 'ONLINE'
+        `);
+
+        return NextResponse.json({
+            ...server,
+            databases: databaseList.recordset,
+        });
     } catch (error: any) {
         return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
     }
 }
-
 // PUT /api/inventory/[id]
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
     const { id } = params;
