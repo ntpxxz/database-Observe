@@ -11,7 +11,7 @@ import {
 import mssqlDriver from "@/lib/drivers/mssqlDriver";
 import postgresDriver from "@/lib/drivers/postgresDriver";
 import mysqlDriver from "@/lib/drivers/mysqlDriver";
-import { queryAppDb } from "@/lib/connectionManager";
+import { queryAppDb as queryAppStaticDb } from '@/lib/appDb'; 
 
 const drivers: { [key: string]: Driver } = {
   MSSQL: mssqlDriver,
@@ -65,12 +65,11 @@ async function processRequest(
  */
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const startTime = Date.now();
-  const { id } = context.params.id
-    ? context.params
-    : { id: request.nextUrl.searchParams.get("id") || "" };
+  const params = await context.params;  // ✅ Await params first
+  const { id } = params || { id: request.nextUrl.searchParams.get("id") || "" };
 
   let targetPool: AnyPool | undefined;
   let driver: Driver | undefined;
@@ -92,7 +91,7 @@ export async function GET(
     );
 
     // --- 2. Fetch Config & Select Driver ---
-    const result = await queryAppDb(
+    const result = await queryAppStaticDb(
       `SELECT 
                 InventoryID as inventoryID, SystemName as systemName, ServerHost as serverHost, 
                 Port as port, DatabaseType as databaseType, 

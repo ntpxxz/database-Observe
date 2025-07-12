@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { Driver } from '@/types';
-import { queryAppDb } from '@/lib/connectionManager';
+import { queryAppDb as queryAppStaticDb } from '@/lib/appDb'; 
 import mssqlDriver from '@/lib/drivers/mssqlDriver';
 import mysqlDriver from '@/lib/drivers/mysqlDriver';
 import postgresDriver from '@/lib/drivers/postgresDriver';
@@ -13,7 +13,7 @@ const drivers: { [key: string]: Driver } = {
 
 export async function GET() {
   try {
-    const result = await queryAppDb(`
+    const result = await queryAppStaticDb(`
       SELECT 
         InventoryID as inventoryID,
         SystemName as systemName,
@@ -34,22 +34,18 @@ export async function GET() {
       const driver = drivers[dbType];
 
       if (!driver || !driver.getDatabases) {
-        console.warn(`❌ Unsupported driver or getDatabases missing for: ${dbType}`);
+        console.warn(`❌ Unsupported driver or missing getDatabases for: ${dbType}`);
         return { ...server, databases: [] };
       }
 
       const connectionConfig = {
-        server: server.serverHost,
+        id: server.id,
+        serverHost: server.serverHost,
         port: server.port,
-        user: server.connectionUsername,
-        password: server.credentialReference,
-        database: 'master', // default fallback
-        connectionTimeout: 10000,
-        options: {
-          encrypt: false,
-          trustServerCertificate: true,
-          enableArithAbort: true,
-        },
+        connectionUsername: server.connectionUsername,
+        credentialReference: server.credentialReference,
+        systemName: server.databaseName || 'master',
+        databaseName: server.databaseName || 'master',
       };
 
       try {
@@ -63,7 +59,6 @@ export async function GET() {
       }
     }));
 
-    // Group by zone
     const groupedByZone: Record<string, any[]> = {};
     for (const srv of enrichedServers) {
       if (!groupedByZone[srv.zone]) {
@@ -83,7 +78,6 @@ export async function GET() {
   }
 }
 
-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -97,48 +91,38 @@ export async function POST(request: Request) {
     }
 
     const connectionConfig = {
-      server: body.serverHost,
-      user: body.connectionUsername,
-      password: body.credentialReference ,
-      database: '', // allow empty to connect to server only
+      serverHost: body.serverHost,
+      connectionUsername: body.connectionUsername,
+      credentialReference: body.credentialReference,
       port: body.port,
-      options: {
-        encrypt: false,
-        trustServerCertificate: true,
-        enableArithAbort: true
-      },
-      connectionTimeout: 10000
+      databaseName: body.databaseName || 'master',
+      systemName: body.databaseName || 'master',
     };
-
-    console.log(`[POST /inventory] config:`, {
-      ...connectionConfig,
-      password: '***REDACTED***' // redact password for security
-    });
 
     const pool = await driver.connect(connectionConfig);
     await driver.disconnect(pool);
 
-    // Insert into database
     const insertQuery = `
-      INSERT INTO IT_ManagementDB.dbo.DatabaseInventory (SystemName, ServerHost, Port, Zone, DatabaseType, ConnectionUsername, CredentialReference)
-      VALUES (@systemName, @serverHost, @port, @zone, @databaseType, @connectionUsername, @credentialReference)
+      INSERT INTO IT_ManagementDB.dbo.DatabaseInventory 
+      (SystemName, ServerHost, Port, Zone, DatabaseType, ConnectionUsername, CredentialReference, DatabaseName)
+      VALUES (@systemName, @serverHost, @port, @zone, @databaseType, @connectionUsername, @credentialReference, @databaseName)
     `;
-    console.log('insert', insertQuery)
-    await queryAppDb(insertQuery, {
+
+    await queryAppStaticDb(insertQuery, {
       systemName: body.systemName,
       serverHost: body.serverHost,
       port: body.port,
       zone: body.zone || '',
       databaseType: body.databaseType.toUpperCase(),
       connectionUsername: body.connectionUsername,
-      credentialReference: body.credentialReference
+      credentialReference: body.credentialReference,
+      databaseName: body.databaseName || 'master',
     });
-    
 
     return NextResponse.json({ success: true });
 
-  } catch (error) {
-    console.error("[API POST /inventory]", error);
+  } catch (error: any) {
+    console.error("[API POST /inventory]", error.message);
     return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
   }
 }

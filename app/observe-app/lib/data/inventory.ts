@@ -2,7 +2,7 @@ import { queryAppDb } from "@/lib/appDb"; // ใช้ connection จากไ�
 import { DatabaseInventory } from "@/types";
 
 /**
- * ดึงข้อมูลการเชื่อมต่อของ Server ตาม inventoryID
+
  * @param id inventory ID
  * @returns DatabaseInventory object (เช่น host, port, user, password, dbName)
  */
@@ -19,7 +19,7 @@ export async function getInventoryById(id: string): Promise<DatabaseInventory | 
 
   const row = result.recordset[0];
 
-  // คุณอาจต้อง mapping ให้ตรงกับ interface DatabaseInventory
+  
   return {
     id: row.id,
     serverHost: row.serverHost,
@@ -27,7 +27,7 @@ export async function getInventoryById(id: string): Promise<DatabaseInventory | 
     databaseName: row.databaseName,
     databaseType: row.databaseType || "mssql",
     connectionUsername: row.connectionUsername,
-    connectionPassword: row.connectionPassword,
+    connectionPassword: row.credentialReference,
     systemName: row.systemName,
     zone: row.zone,
     ownerContact: row.ownerContact,

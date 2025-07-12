@@ -7,12 +7,10 @@ import { ServerDetailView } from "@/components/dashboard/ServerDetailView";
 import { AddServerModal } from "@/components/shared/forms/AddServerModal";
 import { EditDatabaseModal } from "@/components/shared/forms/EditDatabaseModal";
 import { ServerDetailModal } from "@/components/shared/forms/ServerDetailModal";
-import { DatabaseInventory, ServerMetrics, ServerFormData} from "@/types";
+import { DatabaseInventory, ServerMetrics, ServerFormData, PerformanceInsight } from "@/types";
 import { AlertCircle } from "lucide-react";
 import { DatabaseTableView } from "@/components/dashboard/DatabaseTableView";
 
-
-// Custom Hook for managing the server list
 const useInventoryManager = () => {
   const [servers, setServers] = useState<DatabaseInventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,37 +26,33 @@ const useInventoryManager = () => {
 
       const data = await res.json();
       const zonesData: Record<string, DatabaseInventory[]> = data.zones || {};
-      const serverList: DatabaseInventory[] = Object.values(zonesData).flat(); // Combines all servers from different zones
+      const serverList: DatabaseInventory[] = Object.values(zonesData).flat();
 
-      setServers(
-        serverList.sort((a, b) => a.systemName.localeCompare(b.systemName))
-      );
-
-      console.log("data from API", data);
+      setServers(serverList.sort((a, b) => a.systemName.localeCompare(b.systemName)));
     } catch (err: any) {
       setError(err.message);
-      setServers([]); // Clear servers on error
+      setServers([]);
     } finally {
       setIsLoading(false);
     }
-  }, [API_URL]); // Dependency array includes API_URL for useCallback
+  }, [API_URL]);
 
   useEffect(() => {
     fetchServers();
-  }, [fetchServers]); // Effect runs when fetchServers changes (rarely, due to useCallback)
+  }, [fetchServers]);
+
   return { servers, isLoading, error, refreshServers: fetchServers };
 };
 
-const REFRESH_INTERVAL_MS = 60000; // 60 seconds
+const REFRESH_INTERVAL_MS = 60000;
 
-// Custom Hook for managing database metrics
 const useDatabaseMetrics = (server: DatabaseInventory | null) => {
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchMetrics = useCallback(async () => {
-    if (!server?.inventoryID) return; // Don't fetch if no server ID is available
+    if (!server?.inventoryID) return;
 
     setIsLoading(true);
     setError(null);
@@ -70,30 +64,29 @@ const useDatabaseMetrics = (server: DatabaseInventory | null) => {
       setMetrics(json);
     } catch (err: any) {
       setError(err.message);
-      setMetrics(null); // Clear metrics on error
+      setMetrics(null);
     } finally {
       setIsLoading(false);
     }
-  }, [server?.inventoryID]); // Dependency array includes server.inventoryID
+  }, [server?.inventoryID]);
 
   useEffect(() => {
     if (server) {
-      fetchMetrics(); // Fetch immediately when a server is selected
-      const intervalId = setInterval(fetchMetrics, REFRESH_INTERVAL_MS); // Set up auto-refresh
-      return () => clearInterval(intervalId); // Clear interval on unmount or server change
+      fetchMetrics();
+      const intervalId = setInterval(fetchMetrics, REFRESH_INTERVAL_MS);
+      return () => clearInterval(intervalId);
     }
-  }, [server, fetchMetrics]); // Effect runs when server or fetchMetrics changes
+  }, [server, fetchMetrics]);
 
-  return { metrics, isLoading, error };
+  return { metrics, isLoading, error, refreshMetrics: fetchMetrics };
 };
 
-// Custom Hook for managing hardware metrics
 const useHardwareMetrics = (server: DatabaseInventory | null) => {
   const [hardware, setHardware] = useState<any>(null);
   const [hardwareError, setHardwareError] = useState<string | null>(null);
 
   const fetchHardware = useCallback(async () => {
-    if (!server?.inventoryID) return; // Don't fetch if no server ID is available
+    if (!server?.inventoryID) return;
     try {
       const res = await fetch(`/api/inventory/${server.inventoryID}/hardware`);
       if (!res.ok) throw new Error("Failed to fetch hardware metrics");
@@ -101,38 +94,38 @@ const useHardwareMetrics = (server: DatabaseInventory | null) => {
       setHardware(json);
     } catch (err: any) {
       setHardwareError(err.message);
-      setHardware(null); // Clear hardware data on error
+      setHardware(null);
     }
-  }, [server?.inventoryID]); // Dependency array includes server.inventoryID
+  }, [server?.inventoryID]);
 
   useEffect(() => {
-    if (!server) return; // Don't run if no server is selected
-    fetchHardware(); // Fetch immediately when a server is selected
-
-    const intervalId = setInterval(() => {
-      fetchHardware(); // Set up auto-refresh
-    }, REFRESH_INTERVAL_MS);
-
-    return () => clearInterval(intervalId); // Clear interval on unmount or server change
-  }, [server, fetchHardware]); // Effect runs when server or fetchHardware changes
+    if (!server) return;
+    fetchHardware();
+    const intervalId = setInterval(fetchHardware, REFRESH_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [server, fetchHardware]);
 
   return { hardware, hardwareError, refreshHardware: fetchHardware };
 };
+
 const useQueryInsights = (server: DatabaseInventory | null) => {
-  const [insights, setInsights] = useState<PerformanceInsight[] | null>(null);
+  const [insights, setInsights] = useState<PerformanceInsight | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchInsights = useCallback(async () => {
     if (!server?.inventoryID) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/inventory/${server.inventoryID}/query-insight`);
       if (!res.ok) throw new Error("Failed to fetch query insights");
-      const json = await res.json();
+
+      const json: PerformanceInsight = await res.json();
       setInsights(json);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Unknown error");
+      setInsights(null);
     } finally {
       setLoading(false);
     }
@@ -142,62 +135,39 @@ const useQueryInsights = (server: DatabaseInventory | null) => {
     if (server) fetchInsights();
   }, [server, fetchInsights]);
 
-  return { insights, error, loading };
+  return {
+    insights,
+    error,
+    loading,
+    refreshInsights: fetchInsights,
+  };
 };
 
+
 const Home: FC = () => {
-  const [modal, setModal] = useState<{
-    type: "add" | "edit" | "detail" | null;
-    data?: any;
-  }>({ type: null });
-  
-  // Use custom hooks to manage state and data fetching
-  const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(
-    null
-  );
-  const { insights, error: insightError, loading: insightLoading } = useQueryInsights(activeServer);
+  const [modal, setModal] = useState<{ type: "add" | "edit" | "detail" | null; data?: any }>({ type: null });
+  const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(null);
+  const { servers, isLoading: isInventoryLoading, error: inventoryError, refreshServers } = useInventoryManager();
+  const { metrics, isLoading: isMetricsLoading, error: metricsError, refreshMetrics } = useDatabaseMetrics(activeServer);
+  const { hardware, hardwareError, refreshHardware } = useHardwareMetrics(activeServer);
+  const { insights, error: insightError, loading: insightLoading, refreshInsights } = useQueryInsights(activeServer);
 
-  const {  
-    servers,
-    isLoading: isInventoryLoading,
-    error: inventoryError,
-    refreshServers,
-  } = useInventoryManager();
-  const {
-    metrics,
-    isLoading: isMetricsLoading,
-    error: metricsError,
-  } = useDatabaseMetrics(activeServer);
-  const { hardware, hardwareError } = useHardwareMetrics(activeServer);
-  
-  // Group servers by zone for the sidebar
-  const zones = servers.reduce(
-    (acc: Record<string, DatabaseInventory[]>, server) => {
-      const zone = server.zone || "Uncategorized";
-      if (!acc[zone]) acc[zone] = [];
-      acc[zone].push(server);
-      return acc;
-    },
-    {}
-  );
-  console.log("Zones:", zones);
+  const zones = servers.reduce((acc: Record<string, DatabaseInventory[]>, server) => {
+    const zone = server.zone || "Uncategorized";
+    if (!acc[zone]) acc[zone] = [];
+    acc[zone].push(server);
+    return acc;
+  }, {});
 
-  // Merge database and hardware metrics into a single object for convenience
   const mergedMetrics = metrics
     ? { ...metrics, hardware: { ...hardware } ?? {}, hardwareError }
     : { databaseMetrics: {}, hardware: {}, hardwareError: null };
 
-  // Effect to clear activeServer if it's no longer found in the fetched servers list (e.g., after deletion)
   useEffect(() => {
-    if (
-      activeServer &&
-      !servers.find((s) => s.inventoryID === activeServer.inventoryID)
-    ) {
+    if (activeServer && !servers.find((s) => s.inventoryID === activeServer.inventoryID)) {
       setActiveServer(null);
     }
   }, [servers, activeServer]);
-
-  // --- API Interaction Handlers with Improved Error Handling ---
 
   const handleAddServer = async (data: ServerFormData) => {
     try {
@@ -206,27 +176,21 @@ const Home: FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-  
+
       if (!response.ok) {
-        // If the HTTP response is not OK (e.g., 4xx, 5xx status code)
-        const errorData = await response.json(); // Attempt to parse error message from response body
-        console.error("Failed to add server:", errorData);
+        const errorData = await response.json();
         alert(`Failed to add server: ${errorData.message || response.statusText}`);
-        return; // Stop execution on server-side error
+        return;
       }
-  
-      const newServer = await response.json(); // Assuming the backend returns the newly created server object
-  
-      setActiveServer(newServer as DatabaseInventory); // Set the newly added server as active
+
+      const newServer = await response.json();
+      setActiveServer(newServer as DatabaseInventory);
       alert("Server added successfully!");
-  
-    } catch (error: any) { // Catch network errors or issues with the fetch operation itself
-      console.error("Error adding server (network or client-side):", error);
+    } catch (error: any) {
       alert(`Error adding server: ${error.message || "An unknown error occurred."}`);
     } finally {
-      // These actions should happen regardless of success or failure (e.g., refreshing list and closing modal)
-      await refreshServers(); // Refresh the full server list to include the new server (or reflect failed attempt)
-      setModal({ type: null }); // Close the add server modal
+      await refreshServers();
+      setModal({ type: null });
     }
   };
 
@@ -237,61 +201,46 @@ const Home: FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-  
+
       if (!response.ok) {
         const errorData = await response.json();
-        console.error("Failed to update server:", errorData);
         alert(`Failed to update server: ${errorData.message || response.statusText}`);
         return;
       }
-  
-      alert("Server updated successfully!");
-      if (activeServer?.inventoryID === data.inventoryID) {
-        setActiveServer(data); // Update the active server details if it was the one edited
-      }
+
+      if (activeServer?.inventoryID === data.inventoryID) setActiveServer(data);
     } catch (error: any) {
-      console.error("Error updating server (network or client-side):", error);
       alert(`Error updating server: ${error.message || "An unknown error occurred."}`);
     } finally {
-      await refreshServers(); // Refresh the server list to reflect changes
-      setModal({ type: null }); // Close the edit server modal
+      await refreshServers();
+      setModal({ type: null });
     }
   };
 
   const handleDeleteServer = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this server?")) { // Confirmation dialog
+    if (window.confirm("Are you sure you want to delete this server?")) {
       try {
         const response = await fetch(`/api/inventory/${id}`, { method: "DELETE" });
-  
         if (!response.ok) {
           const errorData = await response.json();
-          console.error("Failed to delete server:", errorData);
           alert(`Failed to delete server: ${errorData.message || response.statusText}`);
           return;
         }
-  
-        alert("Server deleted successfully!");
-        if (activeServer?.inventoryID === id) {
-          setActiveServer(null); // Clear the active server if it was deleted
-        }
+        if (activeServer?.inventoryID === id) setActiveServer(null);
       } catch (error: any) {
-        console.error("Error deleting server (network or client-side):", error);
         alert(`Error deleting server: ${error.message || "An unknown error occurred."}`);
       } finally {
-        await refreshServers(); 
+        await refreshServers();
       }
     }
   };
 
-  // --- Component Render ---
   return (
     <div className="flex font-sans bg-slate-950 text-slate-300 min-h-screen">
       <Sidebar
         zones={zones}
         activeServer={activeServer}
-        onSelectServer={(server) => {
-          setActiveServer(server);
-        }}
+        onSelectServer={setActiveServer}
       />
       <main className="flex-1 p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-6 text-white">
@@ -309,27 +258,29 @@ const Home: FC = () => {
           <p className="text-center py-20 text-slate-400">Loading Inventory...</p>
         ) : activeServer ? (
           <>
-<ServerDetailView
-  server={activeServer}
-  metrics={mergedMetrics}
-  isLoading={isMetricsLoading}
-  error={metricsError}
-  onRefresh={async () => {
-    await refreshServers();
-  }}
-  insights={insights}
-  insightsLoading={insightLoading}
-  insightError={insightError}
-/>
-
-       
+            <ServerDetailView
+              server={activeServer}
+              metrics={mergedMetrics}
+              isLoading={isMetricsLoading}
+              error={metricsError}
+              onRefresh={async () => {
+                await Promise.all([
+                  refreshServers(),
+                  refreshMetrics(),
+                  refreshHardware(),
+                  refreshInsights()
+                ]);
+              }}
+              insights={insights}
+              insightsLoading={insightLoading}
+              insightError={insightError}
+            />
 
             {metrics?.databases && (
-              <DatabaseTableView 
-              databases={metrics.databases}
-              inventoryID={activeServer?.inventoryID} 
-            />
-              
+              <DatabaseTableView
+                databases={metrics.databases}
+                inventoryID={activeServer?.inventoryID}
+              />
             )}
           </>
         ) : (
@@ -343,7 +294,6 @@ const Home: FC = () => {
         )}
       </main>
 
-      {/* Modals for server management */}
       <AddServerModal
         isOpen={modal.type === "add"}
         onClose={() => setModal({ type: null })}
@@ -363,6 +313,5 @@ const Home: FC = () => {
     </div>
   );
 };
-
 
 export default Home;

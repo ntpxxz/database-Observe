@@ -155,6 +155,8 @@ export interface Driver {
   getOptimizationSuggestions:(pool: AnyPool) => Promise<OptimizationSuggestions>;
   getProblemQueries: (pool: AnyPool) => Promise<any>;
   getPerformanceInsights: (pool: AnyPool) => Promise<PerformanceInsight[] | { error: string }>;
+  generateInsights?: (data: QueryAnalysis) => PerformanceInsight[];
+
 }
 
 export interface DatabaseInventory {
@@ -307,4 +309,35 @@ export interface SuccessResponse {
     analysisLevel: AnalysisLevel;
     timestamp: string;
   };
+}
+
+// types.ts หรือในส่วนที่คุณเก็บ type
+export type InsightType =
+  | "running_query"
+  | "slow_query"
+  | "blocking_query"
+  | "wait_stats"
+  | "deadlock_event"
+  | "high_tempdb_usage";
+
+export interface InsightItem {
+  id?: string;
+  session_id?: string;
+  duration?: number;
+  query?: string;
+  database?: string;
+  wait_type?: string;
+  resource?: string;
+  count?: number;
+  [key: string]: any;
+  type?: InsightType; //
+}
+
+export interface RawInsights {
+  runningQueries?: InsightItem[];
+  slowQueries?: InsightItem[];
+  blockingQueries?: InsightItem[];
+  waitStats?: InsightItem[];
+  deadlocks?: InsightItem[];
+  tempDbUsage?: InsightItem[];
 }

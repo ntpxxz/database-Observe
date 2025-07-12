@@ -176,12 +176,12 @@ const mssqlDriver: IDriver = {
         min: config.poolMin || 0,
         idleTimeoutMillis: config.idleTimeout || 30000
       }
+      
     });
 
     await pool.connect();
     return pool;
   },
-
 
   disconnect: async (pool: AnyPool): Promise<void> => {
     await (pool as ConnectionPool).close();
@@ -216,6 +216,7 @@ const mssqlDriver: IDriver = {
       deadlocks: getResult(results[7]),
       tempdbUsage: getResult(results[8]),
     });
+    
 
     return {
       kpi: {
@@ -252,18 +253,26 @@ const mssqlDriver: IDriver = {
       mssqlPool.request().query(SQL_QUERIES.deadlockAnalysis),
       mssqlPool.request().query(SQL_QUERIES.tempdbSessionUsage),
     ]);
+  
     const getResult = (r: PromiseSettledResult<IResult<any>>) => r.status === 'fulfilled' ? r.value.recordset : [];
-    return {
+  
+    const rawData = {
       runningQueries: getResult(results[0]).filter(isUserQuery),
       slowQueries: getResult(results[1]).filter(isUserQuery),
       blockingQueries: getResult(results[2]).filter(isUserQuery),
       waitStats: getResult(results[3]),
       deadlocks: getResult(results[4]),
-      tempdbUsage: getResult(results[5]).filter(isUserQuery),   
-      
+      tempdbUsage: getResult(results[5]).filter(isUserQuery),
+    };
+  
+    const insights = generateInsights(rawData); // <✅ ตรงนี้แปลงเป็น insight array
+  
+    return {
+      ...rawData,
+      insights, 
     };
   },
-
+  
   getOptimizationSuggestions: async (pool: AnyPool): Promise<OptimizationSuggestions> => {
     const mssqlPool = pool as ConnectionPool;
     const results = await Promise.allSettled([
@@ -324,4 +333,14 @@ const mssqlDriver: IDriver = {
   }
 };
 
+
 export default mssqlDriver;
+
+export async function killSession(pool: ConnectionPool, sessionId: string): Promise<void> {
+  await pool.request().query(`KILL ${sessionId}`);
+}
+
+export async function executeQuery(pool: ConnectionPool, query: string) {
+  const result = await pool.request().query(query);
+  return result.recordset;
+}

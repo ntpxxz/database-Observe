@@ -1,6 +1,6 @@
 import sql from 'mssql';
+import { DatabaseInventory } from '@/types';
 
-// Static config สำหรับฐานข้อมูลกลาง (IT_ManagementDB)
 const config: sql.config = {
   user: process.env.MSSQL_USER || 'sa',
   password: process.env.MSSQL_PASSWORD || '123456',
@@ -42,7 +42,6 @@ function getAppDbConnection(): Promise<sql.ConnectionPool> {
   return global.appDbPool;
 }
 
-// Generic query helper
 export async function queryAppDb(
   queryTemplate: string,
   params: { [key: string]: any } = {}
@@ -56,29 +55,53 @@ export async function queryAppDb(
 
   return request.query(queryTemplate);
 }
-
-// Load inventory config by ID
 export async function getInventoryById(id: string) {
   const result = await queryAppDb(
-    `SELECT * FROM Inventory WHERE id = @id`,
+    `SELECT 
+      InventoryID as inventoryID,
+      SystemName as systemName,
+      ServerHost as serverHost,
+      Port as port,
+      Zone as zone,
+      DatabaseType as databaseType,
+      ConnectionUsername as connectionUsername,
+      CredentialReference as credentialReference
+    FROM IT_ManagementDB.dbo.DatabaseInventory
+    WHERE InventoryID = @id`,
     { id }
   );
 
-  if (!result.recordset[0]) throw new Error(`Inventory ID not found: ${id}`);
+  if (!result.recordset[0]) {
+    throw new Error(`Inventory ID not found: ${id}`);
+  }
 
-  const row = result.recordset[0];
+  return result.recordset[0];
+}
 
-  return {
-    id: row.id,
-    name: row.name,
-    server: row.serverHost,
-    user: row.connectionUsername,
-    password: row.connectionPassword,
-    port: row.port || 1433,
-    database: row.databaseName,
-    encrypt: true, // ปรับตามต้องการ
-    poolMax: 10,
-    poolMin: 0,
-    idleTimeout: 30000
-  };
+export async function updateInventoryById(id: string, data: DatabaseInventory) {
+  await queryAppDb(
+    `UPDATE IT_ManagementDB.dbo.DatabaseInventory SET
+      SystemName = @systemName,
+      ServerHost = @serverHost,
+      Port = @port,
+      Zone = @zone,
+      DatabaseType = @databaseType,
+      ConnectionUsername = @connectionUsername,
+      CredentialReference = @credentialReference,
+      PurposeNotes = @purposeNotes,
+      OwnerContact = @ownerContact
+    WHERE InventoryID = @inventoryID`,
+    {
+      inventoryID: id,
+      systemName: data.systemName,
+      serverHost: data.serverHost,
+      port: data.port,
+      zone: data.zone,
+      databaseType: data.databaseType,
+      connectionUsername: data.connectionUsername,
+      credentialReference: data.credentialReference,
+      purposeNotes: data.purposeNotes || '',
+      ownerContact: data.ownerContact || ''
+    }
+  );
 }
