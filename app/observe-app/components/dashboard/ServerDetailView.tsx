@@ -17,7 +17,8 @@ import { DatabaseTableView } from "./DatabaseTableView";
 import { PerformanceInsightsTable } from "./PerformanceInsightsTable";
 import { QueryTrendChart } from "../ui/QueryTrendChart";
 import { DiskUsageChart } from "../ui/DiskUsageChart";
-
+import toast from "react-hot-toast";
+import { isReadOnlySQL } from "@/lib/utils";
 interface ServerDetailViewProps {
   server: DatabaseInventory;
   metrics: ServerMetrics | null;
@@ -26,7 +27,7 @@ interface ServerDetailViewProps {
   insights?: any | null;
   insightsLoading?: boolean;
   insightError?: string | null;
-  onRefresh: () => void;
+  onRefresh: (tab: "performance" |"insights"| "hardware") => void;
 }
 
 interface DetailItemProps {
@@ -87,8 +88,9 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   insightError,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    "performance" | "hardware"  | "insights"
+    "performance" | "insights" | "hardware"  
   >("performance");
+
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const serverStatus = useMemo(() => {
@@ -124,9 +126,10 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     return { total, critical, warning };
   }, [insights]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (tab: "performance" | "insights" | "hardware") => {
     try {
-      await onRefresh();
+      console.log ('The tab', tab)
+      await onRefresh(activeTab);
       setLastRefresh(new Date());
     } catch (err) {
       console.error("Failed to refresh data:", err);
@@ -148,28 +151,49 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   
       const result = await res.json();
       toast.success(`✅ Session ${sessionId} killed successfully`);
-      handleRefresh(); // Refresh insights after kill
+      handleRefresh(tab); // Refresh insights after kill
     } catch (err: any) {
       toast.error(`❌ Failed to kill session ${sessionId}: ${err.message}`);
     }
   };
 
   const handleExecuteManualQuery = async (query: string) => {
+    if (!query || !server?.inventoryID) {
+      toast.error("❌ Missing query or Inventory ID");
+      return { error: "Missing query or inventoryId" };
+    }
+  
+    // ✅ เช็คจากฝั่ง client ก่อน
+    if (!isReadOnlySQL(query)) {
+      toast.error("❌ Only single-statement read-only SELECT or safe EXEC queries are allowed.");
+      return { error: "Query validation failed on client." };
+    }
+  
     try {
       const res = await fetch(`/api/execute-query`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, inventoryId: server.inventoryID }),
       });
-      return await res.json();
-    } catch (error) {
-      console.error("Manual query execution failed:", error);
-      return { error: error.message };
-    }
-  };
   
+      const result = await res.json();
+  
+      if (!res.ok) {
+        toast.error(`❌ ${result.message || "Query execution failed."}`);
+        return { error: result.message };
+      }
+  
+      toast.success("✅ Query executed successfully!");
+      return result;
+    } catch (error) {
+      console.error("❌ Query execution failed:", error);
+      toast.error("Unexpected error occurred. See console for details.");
+      return { error };
+    }
+  };  
+  
+  
+   
   const flattenedInsights = useMemo(() => {
     if (!insights || typeof insights !== "object") return [];
   
@@ -259,7 +283,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               Last updated: {lastRefresh.toLocaleTimeString()}
             </span>
             <button
-              onClick={handleRefresh}
+              onClick= {()=> handleRefresh(activeTab)}
               disabled={isLoading}
               className="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
               title="Refresh data"
@@ -364,6 +388,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               isLoading={insightsLoading}
               onKillSession={handleKillSession}
               onExecuteQuery={handleExecuteManualQuery}
+              
             />
           </section>
         ) : (
@@ -394,9 +419,8 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                 isHighlight
               />
               <DetailItem label="Zone" value={server.zone} />
-              <DetailItem label="Server Host" value={server.serverHost} />
+              <DetailItem label="IP Address" value={server.serverHost} />
               <DetailItem label="Port" value={server.port} />
-              <DetailItem label="Database Name" value={server.databaseName} />
               <DetailItem label="Database Type" value={server.databaseType} />
               <DetailItem
                 label="Connection Username"

@@ -185,7 +185,7 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-slate-300">
-                Server Host
+              IP Address
               </label>
               <input
                 name="serverHost"

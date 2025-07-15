@@ -258,23 +258,24 @@ const Home: FC = () => {
           <p className="text-center py-20 text-slate-400">Loading Inventory...</p>
         ) : activeServer ? (
           <>
-            <ServerDetailView
-              server={activeServer}
-              metrics={mergedMetrics}
-              isLoading={isMetricsLoading}
-              error={metricsError}
-              onRefresh={async () => {
-                await Promise.all([
-                  refreshServers(),
-                  refreshMetrics(),
-                  refreshHardware(),
-                  refreshInsights()
-                ]);
-              }}
-              insights={insights}
-              insightsLoading={insightLoading}
-              insightError={insightError}
-            />
+           <ServerDetailView
+  server={activeServer}
+  metrics={mergedMetrics}
+  isLoading={isMetricsLoading}
+  error={metricsError}
+  onRefresh={async (tab) => {
+    if (tab === "performance") {
+      await Promise.all([refreshMetrics(), refreshServers()]);
+    } else if (tab === "insights") {
+      await refreshInsights();
+    } else if (tab === "hardware") {
+      await refreshHardware();
+    }
+  }}
+  insights={insights}
+  insightsLoading={insightLoading}
+  insightError={insightError}
+/>
 
             {metrics?.databases && (
               <DatabaseTableView

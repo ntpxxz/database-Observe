@@ -145,7 +145,7 @@ export const AddServerModal: FC<AddServerModalProps> = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300">Server Host</label>
+              <label className="block text-sm font-medium text-slate-300">IP Address</label>
               <input type="text" name="serverHost" value={formData.serverHost} onChange={handleChange} className="mt-1 block w-full rounded-md bg-slate-700 border-slate-600 text-white p-2" required disabled={isSubmitting} />
             </div>
             <div>

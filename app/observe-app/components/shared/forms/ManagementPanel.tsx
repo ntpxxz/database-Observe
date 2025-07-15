@@ -38,7 +38,7 @@ export const ManagementPanel: FC<ManagementPanelProps> = ({ servers, onOpenAddMo
                             <th className="px-4 py-3">System Name</th>
                             <th className="px-4 py-3">Zone</th>
                             <th className="px-4 py-3">Database Type</th>
-                            <th className="px-4 py-3">Connection</th>
+                            <th className="px-4 py-3">IP Address</th>
                             <th className="px-4 py-3">Owner</th>
                             <th className="px-4 py-3 text-center">Actions</th>
                         </tr>

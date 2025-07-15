@@ -73,10 +73,9 @@ export const ServerDetailModal: FC<ServerDetailModalProps> = ({
               <div className="grid grid-cols-2 gap-4">
                 <DetailItem label="System Name" value={server.systemName} />
                 <DetailItem label="Database Type" value={server.databaseType} />
-                <DetailItem label="Server Host" value={server.serverHost} />
+                <DetailItem label="IP Address" value={server.serverHost} />
                 <DetailItem label="Port" value={server.port.toString()} />
                 <DetailItem label="Zone" value={server.zone} />
-                <DetailItem label="Database Name" value={server.databaseName} />
                 <DetailItem label="Username" value={server.connectionUsername} />
                 <DetailItem label="Owner Contact" value={server.ownerContact} />
                 <DetailItem

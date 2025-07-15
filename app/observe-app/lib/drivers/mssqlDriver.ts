@@ -330,17 +330,33 @@ const mssqlDriver: IDriver = {
   },
   getPerformanceInsights: function (pool: AnyPool): Promise<PerformanceInsight[] | { error: string; }> {
     throw new Error("Function not implemented.");
+  },
+  async killSession(pool: ConnectionPool, sessionId: string): Promise<void> {
+    await pool.request().query(`KILL ${sessionId}`);
+  },
+  
+ async executeQuery(pool: sql.ConnectionPool, query: string) {
+    try {
+      const request = pool.request();
+      console.log("Running manual query:", query);
+  
+      const result = await request.query(query);
+      console.log("Manual query result:", result);
+  
+      return result.recordset; // หรือ return ทั้ง result ถ้าอยากได้ metadata
+    } catch (error: any) {
+      console.error("[ExecuteQuery Error]", {
+        message: error.message,
+        stack: error.stack,
+        error,
+      });
+  
+      // Propagate the error to API
+      throw new Error(`Failed to execute query: ${error.message}`);
+    }
   }
 };
 
 
 export default mssqlDriver;
 
-export async function killSession(pool: ConnectionPool, sessionId: string): Promise<void> {
-  await pool.request().query(`KILL ${sessionId}`);
-}
-
-export async function executeQuery(pool: ConnectionPool, query: string) {
-  const result = await pool.request().query(query);
-  return result.recordset;
-}

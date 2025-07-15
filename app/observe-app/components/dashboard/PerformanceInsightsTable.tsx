@@ -112,24 +112,55 @@ const extractQueryText = (insight: any): string => {
 };
 
 function getNumericValue(insight: any, key: string): number {
-  const val = insight?.[key];
+  if (!insight || typeof insight !== 'object') return 0;
+  const numericFallbacks: Record<string, string[]> = {
+    duration: [
+      'details.mean_exec_time_ms',    
+      'mean_exec_time_ms',            
+      'avg_duration_ms',
+      'duration_ms',
+      'execution_time_ms',
+      'wait_time_ms',
+      'elapsed_time_ms',
+      'details.avg_duration_ms',
+      'details.duration_ms',
+      'details.mean_exec_time_ms'  
+    ],
 
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string' && !isNaN(Number(val))) return Number(val);
+    count: [
+      'execution_count',
+      'count',
+      'calls',
+      'details.execution_count',
+    ],
+    cpu_time: [
+      'cpu_time',
+      'details.cpu_time',
+    ],
+    wait_time: [
+      'wait_time_ms',
+      'wait_time',
+      'details.wait_time_ms',
+    ],
+    logical_reads: [
+      'logical_reads',
+      'details.logical_reads',
+    ]
+  };
 
-  // fallback mapping
-  if (key === 'duration') {
-    return (
-      insight.duration_ms ||
-      insight.execution_time_ms ||
-      insight.wait_time_ms ||
-      insight.elapsed_time_ms ||
-      0
-    );
-  }
+  // Direct check
+  const directValue = insight?.[key];
+  if (typeof directValue === 'number') return directValue;
+  if (typeof directValue === 'string' && !isNaN(Number(directValue))) return Number(directValue);
 
-  if (key === 'count') {
-    return insight.count || insight.execution_count || 0;
+  // Fallback lookup
+  const fallbackKeys = numericFallbacks[key];
+  if (fallbackKeys && Array.isArray(fallbackKeys)) {
+    for (const path of fallbackKeys) {
+      const value = path.split('.').reduce((obj, part) => obj?.[part], insight);
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string' && !isNaN(Number(value))) return Number(value);
+    }
   }
 
   return 0;
@@ -635,7 +666,11 @@ filtered.sort((a, b) => {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
                       <button
-                        onClick={() => setSelectedInsight(insight)}
+                      
+                        onClick={
+                          () => {
+                            console.log("Selected insight:", insight);
+                            setSelectedInsight(insight)}}
                         className="text-sky-300 hover:text-sky-200 font-medium py-1 px-2 rounded text-xs hover:bg-sky-500/10 transition-colors"
                       >
                         Details
