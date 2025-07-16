@@ -106,7 +106,6 @@ export const SQL_QUERIES = {
     WHERE qs.total_elapsed_time / qs.execution_count > 1000000 -- 1 second
     ORDER BY mean_exec_time_ms DESC`,
 
-
   // Removed duplicate tempdbSessionUsage definition
 
   runningQueries: `
@@ -258,8 +257,7 @@ export const SQL_QUERIES = {
       SUM(size * 8.0 / 1024) as total_space_mb,
       SUM(size * 8.0 / 1024) - SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS BIGINT) * 8.0 / 1024) as free_space_mb
     FROM tempdb.sys.database_files
-    WHERE type_desc = 'ROWS'`
-  ,
+    WHERE type_desc = 'ROWS'`,
   tempdbSessionUsage: `
     SELECT TOP 20
       s.session_id,
@@ -301,6 +299,24 @@ export const SQL_QUERIES = {
     FROM DeadlockEvents
     ORDER BY deadlock_time DESC
   `,
+  databaseInfo: `
+ SELECT 
+  d.name,
+  d.state_desc,
+  d.recovery_model_desc,
+  d.compatibility_level,
+  d.collation_name,
+  d.create_date,
+  CAST(SUM(mf.size) * 8.0 / 1024 AS DECIMAL(18,2)) AS sizeMB
+FROM 
+  sys.databases d
+JOIN 
+  sys.master_files mf ON d.database_id = mf.database_id
+GROUP BY 
+  d.name, d.state_desc, d.recovery_model_desc, d.compatibility_level, d.collation_name, d.create_date
+ORDER BY 
+  sizeMB DESC;
+;`,
 };
 
 export type SqlQueries = typeof SQL_QUERIES;

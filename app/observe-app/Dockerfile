@@ -1,14 +1,18 @@
-FROM node:18-alpine
+# Dockerfile
+FROM node:23.11.0-alpine AS builder
 
 WORKDIR /app
-
-COPY package*.json ./
-RUN npm install
-
 COPY . .
 
+# Install dependencies and build
+RUN npm install
 RUN npm run build
 
-EXPOSE 3000
+# Production image
+FROM node:23.11.0-alpine
 
+WORKDIR /app
+COPY --from=builder /app ./
+
+EXPOSE 3000
 CMD ["npm", "start"]

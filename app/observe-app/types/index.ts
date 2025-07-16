@@ -22,6 +22,12 @@ export type DbType = 'MSSQL' | 'POSTGRES' | 'MYSQL';
 
 // Create a base connection config type
 export interface DatabaseConnectionConfig {
+  encrypt: boolean;
+  connectionTimeout: number;
+  user: string | undefined;
+  database: string | undefined;
+  password: string | undefined;
+  server: string;
   serverHost: string;
   port: number;
   databaseName: string;
@@ -128,7 +134,7 @@ export interface Metrics {
     cpuUsage: number;
     databaseMetrics: HardwareMetric[];
   } | null;
-
+  databaseInfo?: DatabaseInfo[];
   hardwareError?: string | null;
   error?: string | null;
 
@@ -149,6 +155,8 @@ export interface Driver {
   getOptimizationSuggestions:(pool: AnyPool) => Promise<OptimizationSuggestions>;
   getProblemQueries: (pool: AnyPool) => Promise<any>;
   getPerformanceInsights: (pool: AnyPool) => Promise<PerformanceInsight[] | { error: string }>;
+  generateInsights?: (data: QueryAnalysis) => PerformanceInsight[];
+
 }
 
 export interface DatabaseInventory {
@@ -156,7 +164,6 @@ export interface DatabaseInventory {
   systemName: string;
   serverHost: string;
   port: number;
-  databaseName: string;
   zone: string;
   databaseType: DbType;
   connectionUsername: string;
@@ -165,6 +172,9 @@ export interface DatabaseInventory {
   ownerContact: string;
   createdDate?: Date;
   updated_at?: Date;
+}
+export interface DatabaseInventoryWithDatabases extends DatabaseInventory {
+  databases?: string[]; // optional at runtime
 }
 
 export interface DatabaseResponse {
@@ -191,6 +201,17 @@ export interface QueryAnalysis {
   resourceUsage: ResourceUsage[];
   indexUsage: IndexUsage[];
   waitStats: WaitStat[];
+}
+
+export interface DatabaseInfo {
+  name: string;
+  sizeMB: number;
+  state: string; 
+  recoveryModel: string;
+  compatibilityLevel: string; 
+  collation: string; 
+  createdDate: Date;
+  lastBackupDate?: Date; 
 }
 
 export interface RunningQuery {
@@ -288,4 +309,35 @@ export interface SuccessResponse {
     analysisLevel: AnalysisLevel;
     timestamp: string;
   };
+}
+
+// types.ts หรือในส่วนที่คุณเก็บ type
+export type InsightType =
+  | "running_query"
+  | "slow_query"
+  | "blocking_query"
+  | "wait_stats"
+  | "deadlock_event"
+  | "high_tempdb_usage";
+
+export interface InsightItem {
+  id?: string;
+  session_id?: string;
+  duration?: number;
+  query?: string;
+  database?: string;
+  wait_type?: string;
+  resource?: string;
+  count?: number;
+  [key: string]: any;
+  type?: InsightType; //
+}
+
+export interface RawInsights {
+  runningQueries?: InsightItem[];
+  slowQueries?: InsightItem[];
+  blockingQueries?: InsightItem[];
+  waitStats?: InsightItem[];
+  deadlocks?: InsightItem[];
+  tempDbUsage?: InsightItem[];
 }

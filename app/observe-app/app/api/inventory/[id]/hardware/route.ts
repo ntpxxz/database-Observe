@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "mssql";
-import { queryAppDb } from "@/lib/db";
+import { queryAppDb as queryAppStaticDb } from '@/lib/appDb'; 
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const resolvedParams = await params;  // ✅ Await params first
+  const { id } = resolvedParams;  
   let pool: sql.ConnectionPool | undefined;
 
   try {
     // ขั้นตอนที่ 1: ดึงข้อมูล Config (ส่วนนี้ของคุณถูกต้องดีแล้ว)
-    const result = await queryAppDb(
+    const result = await queryAppStaticDb(
       `SELECT 
           InventoryID as inventoryID, SystemName as systemName, ServerHost as serverHost, 
-          Port as port, DatabaseName as databaseName, DatabaseType as databaseType, 
+          Port as port, DatabaseType as databaseType, 
           ConnectionUsername as connectionUsername, CredentialReference as credentialReference
         FROM IT_ManagementDB.dbo.databaseInventory
         WHERE inventoryID = @id`,

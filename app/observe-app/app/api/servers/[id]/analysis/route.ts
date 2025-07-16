@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { queryAppDb as queryInventoryDb } from '@/lib/db';
+import { queryAppDb as queryInventoryDb } from '@/lib/connectionManager';
 import { Driver, ServerConfig, AnyPool } from '@/types';
 import postgresDriver from '@/lib/drivers/postgresDriver';
 import mysqlDriver from '@/lib/drivers/mysqlDriver';

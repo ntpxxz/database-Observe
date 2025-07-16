@@ -1,146 +1,128 @@
 import { NextResponse } from 'next/server';
-import { queryAppDb} from '@/lib/db';
+import { Driver } from '@/types';
+import { queryAppDb as queryAppStaticDb } from '@/lib/appDb'; 
+import mssqlDriver from '@/lib/drivers/mssqlDriver';
+import mysqlDriver from '@/lib/drivers/mysqlDriver';
+import postgresDriver from '@/lib/drivers/postgresDriver';
 
-/**
- * GET handler for /api/inventory
- * Fetches all server inventory records from the database.
- */
+const drivers: { [key: string]: Driver } = {
+  MSSQL: mssqlDriver,
+  MYSQL: mysqlDriver,
+  POSTGRES: postgresDriver,
+};
+
 export async function GET() {
-    try {
-        const result = await queryAppDb( `SELECT 
-            InventoryID as inventoryID,
-            SystemName as systemName,
-            ServerHost as serverHost,
-            Port as port,                       
-            DatabaseName as databaseName,
-            Zone as zone,
-            DatabaseType as databaseType,
-            ConnectionUsername as connectionUsername,
-            CredentialReference as credentialReference,
-            PurposeNotes as purposeNotes,
-            OwnerContact as ownerContact,
-            CreatedDate as createdDate 
-          FROM IT_ManagementDB.dbo.DatabaseInventory
-          ORDER BY systemName ASC`);
-        // Ensure the response is always in the expected { data: [...] } format
-        return NextResponse.json({ data: result.recordset });
-    } catch (error: any) {
-        console.error("[API GET /inventory]", error);
-        return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
-    }
-}
+  try {
+    const result = await queryAppStaticDb(`
+      SELECT 
+        InventoryID as inventoryID,
+        SystemName as systemName,
+        ServerHost as serverHost,
+        Port as port,
+        Zone as zone,
+        DatabaseType as databaseType,
+        ConnectionUsername as connectionUsername,
+        CredentialReference as credentialReference
+      FROM IT_ManagementDB.dbo.DatabaseInventory
+      ORDER BY zone ASC, systemName ASC
+    `);
 
-// Add this validation function at the top of the file
-function validatePortForDbType(port: number, dbType: string): boolean {
-  const defaultPorts = {
-    'MSSQL': 1433,
-    'MYSQL': 3306,
-    'POSTGRES': 5432
-  };
+    const rawServers = result.recordset;
 
-  // If it's a default port, always allow it
-  if (Object.values(defaultPorts).includes(port)) {
-    return true;
-  }
+    const enrichedServers = await Promise.all(rawServers.map(async (server) => {
+      const dbType = (server.databaseType || '').toUpperCase();
+      const driver = drivers[dbType];
 
-
-}
-
-export async function POST(req: Request) {
-    try {
-      const body = await req.json();
-      console.log("Received body:", body); 
-      const {
-        systemName,
-        serverHost,
-        port,
-        databaseName,
-        zone,
-        databaseType,        
-        connectionUsername,
-        credentialReference,
-        purposeNotes,
-        ownerContact
-      } = body;
-
-      // Add port validation
-      if (!validatePortForDbType(port, databaseType)) {
-        return new Response(
-          JSON.stringify({ 
-            message: `Invalid port ${port} for database type ${databaseType}. 
-            Expected ports: MSSQL(1433-1434), MySQL(3306-3307), PostgreSQL(5432-5433)` 
-          }), 
-          { status: 400 }
-        );
+      if (!driver || !driver.getDatabases) {
+        console.warn(`❌ Unsupported driver or missing getDatabases for: ${dbType}`);
+        return { ...server, databases: [] };
       }
-  
-      // Validate required fields
-      const requiredFields = [
-        'systemName',
-        'serverHost',
-        'port',
-        'databaseName',
-        'zone',
-        'databaseType',
-        'connectionUsername',
-        'credentialReference',
-        'ownerContact'
-    ];
 
-    const missingFields = requiredFields.filter(field => !body[field]);
-    if (missingFields.length > 0) {
-        return NextResponse.json({
-            success: false,
-            message: `Missing required fields: ${missingFields.join(', ')}`
-        }, { status: 400 });
+      const connectionConfig = {
+        id: server.id,
+        serverHost: server.serverHost,
+        port: server.port,
+        connectionUsername: server.connectionUsername,
+        credentialReference: server.credentialReference,
+        systemName: server.databaseName || 'master',
+        databaseName: server.databaseName || 'master',
+      };
+
+      try {
+        const pool = await driver.connect(connectionConfig);
+        const databases = await driver.getDatabases(pool);
+        await driver.disconnect(pool);
+        return { ...server, databases };
+      } catch (e: any) {
+        console.error(`⚠️ Failed to fetch databases for ${server.systemName}:`, e.message);
+        return { ...server, databases: [] };
+      }
+    }));
+
+    const groupedByZone: Record<string, any[]> = {};
+    for (const srv of enrichedServers) {
+      if (!groupedByZone[srv.zone]) {
+        groupedByZone[srv.zone] = [];
+      }
+      groupedByZone[srv.zone].push(srv);
     }
 
-    // Validate database type
-    const validTypes = ['MSSQL', 'POSTGRES', 'MYSQL'];
-    if (!validTypes.includes(body.databaseType)) {
-        return NextResponse.json({
-            success: false,
-            message: `Invalid database type. Must be one of: ${validTypes.join(', ')}`
-        }, { status: 400 });
-    }
+    return NextResponse.json({ zones: groupedByZone });
 
-    // Validate port number
-    if (body.port < 1 || body.port > 65535) {
-        return NextResponse.json({
-            success: false,
-            message: 'Port must be between 1 and 65535'
-        }, { status: 400 });
-    }
-  
-      await queryAppDb(
-        `INSERT INTO IT_ManagementDB.dbo.DatabaseInventory (
-          SystemName, ServerHost, Port, DatabaseName, Zone, DatabaseType, 
-          ConnectionUsername, CredentialReference, PurposeNotes, OwnerContact, CreatedDate
-        ) VALUES (
-          @systemName, @serverHost, @port, @databaseName, @zone, @databaseType, 
-          @connectionUsername, @credentialReference, @purposeNotes, @ownerContact, SYSDATETIMEOFFSET()
-        )`,
-        {
-          systemName,
-          serverHost,
-          port,
-          databaseName,
-          zone,
-          databaseType,
-          connectionUsername,
-          credentialReference,
-          purposeNotes,
-          ownerContact
-        }
-      );
-  
-      return new Response(JSON.stringify({ message: "Added successfully" }), {
-        status: 200,
-      });
-    } catch (err: any) {
-      console.error("ERROR:", err);
-      return new Response(JSON.stringify({ message: `Server Error: ${err.message}` }), {
-        status: 500,
-      });
-    }
+  } catch (error: any) {
+    console.error("[API GET /inventory] Internal Error:", error.message);
+    return NextResponse.json(
+      { message: `Server Error: ${error.message}` },
+      { status: 500 }
+    );
   }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    if (!body.systemName || !body.serverHost || !body.port || !body.databaseType || !body.connectionUsername || !body.credentialReference) {
+      return NextResponse.json({ success: false, message: 'Missing required fields.' }, { status: 400 });
+    }
+
+    const driver = drivers[body.databaseType.toUpperCase()];
+    if (!driver) {
+      return NextResponse.json({ success: false, message: `Unsupported DB type: ${body.databaseType}` }, { status: 400 });
+    }
+
+    const connectionConfig = {
+      serverHost: body.serverHost,
+      connectionUsername: body.connectionUsername,
+      credentialReference: body.credentialReference,
+      port: body.port,
+      databaseName: body.databaseName || 'master',
+      systemName: body.databaseName || 'master',
+    };
+
+    const pool = await driver.connect(connectionConfig);
+    await driver.disconnect(pool);
+
+    const insertQuery = `
+      INSERT INTO IT_ManagementDB.dbo.DatabaseInventory 
+      (SystemName, ServerHost, Port, Zone, DatabaseType, ConnectionUsername, CredentialReference, DatabaseName)
+      VALUES (@systemName, @serverHost, @port, @zone, @databaseType, @connectionUsername, @credentialReference, @databaseName)
+    `;
+
+    await queryAppStaticDb(insertQuery, {
+      systemName: body.systemName,
+      serverHost: body.serverHost,
+      port: body.port,
+      zone: body.zone || '',
+      databaseType: body.databaseType.toUpperCase(),
+      connectionUsername: body.connectionUsername,
+      credentialReference: body.credentialReference,
+      databaseName: body.databaseName || 'master',
+    });
+
+    return NextResponse.json({ success: true });
+
+  } catch (error: any) {
+    console.error("[API POST /inventory]", error.message);
+    return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
+  }
+}

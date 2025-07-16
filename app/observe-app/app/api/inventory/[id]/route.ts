@@ -1,88 +1,95 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryAppDb } from '@/lib/db';
+import { queryAppDb as queryStaticAppDb } from '@/lib/appDb';
+import { queryAppDb as queryDynamicAppDb } from '@/lib/connectionManager';
+import { DatabaseInventory } from '@/types';
+import { updateInventoryById, getInventoryById } from '@/lib/appDb';
 
 // GET /api/inventory/[id]
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-    const { id } = params;
+  const { id } = params;
 
-    try {
-        const result = await queryAppDb(
-            `SELECT * FROM IT_ManagementDB.dbo.databaseInventory WHERE InventoryID = @id`,
-            { id }
-        );
+  try {
+    // 1. ดึงข้อมูล config server จากฐานข้อมูลกลาง
+    const result = await queryStaticAppDb(
+      `SELECT * FROM IT_ManagementDB.dbo.DatabaseInventory WHERE InventoryID = @id`,
+      { id }
+    );
 
-        if (result.recordset.length === 0) {
-            return NextResponse.json({ message: 'Not found' }, { status: 404 });
-        }
-
-        return NextResponse.json(result.recordset[0]);
-    } catch (error: any) {
-        return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
+    if (result.recordset.length === 0) {
+      return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
+
+    const server: DatabaseInventory = result.recordset[0];
+
+    // 2. ใช้ config นั้น connect ไปยัง database จริง
+    const databaseList = await queryDynamicAppDb(server, `
+      SELECT name, sizeMB = CAST(size AS FLOAT) / 128, state_desc as state
+      FROM sys.databases
+      WHERE state_desc = 'ONLINE'
+    `);
+
+    return NextResponse.json({
+      ...server,
+      databases: databaseList.recordset,
+    });
+  } catch (error: any) {
+    console.error(`[GET /inventory/${id}]`, error.message);
+    return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
+  }
 }
 
-// PUT /api/inventory/[id]
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-    const { id } = params;
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  const id = params.id;
+  try {
+    const body = await req.json();
 
-    try {
-        const body = await request.json();
-        if (!body || typeof body.port === 'undefined') {
-            return NextResponse.json({ message: 'Missing required field: port' }, { status: 400 });
-        }
-        const {
-            systemName,
-            serverHost,
-            port,
-            databaseName,
-            zone,
-            databaseType,
-            connectionUsername,
-            credentialReference,
-            purposeNotes,
-            ownerContact
-        } = body;   
-        if (!systemName || !serverHost || !port || !databaseName || !zone || !databaseType || !connectionUsername || !credentialReference || !purposeNotes || !ownerContact) {
-            return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
-        }
-
-
-        const result = await queryAppDb(
-            `UPDATE IT_ManagementDB.dbo.DatabaseInventory SET 
-                SystemName = @systemName, ServerHost = @serverHost, Port = @port, 
-                databaseName = @databaseName, Zone = @zone, databaseType = @databaseType, 
-                connectionUsername = @connectionUsername, credentialReference = @credentialReference, 
-                purposeNotes = @purposeNotes, ownerContact = @ownerContact, 
-                updated_at = SYSDATETIMEOFFSET()
-             WHERE inventoryID = @id`,
-            { ...body, id }
-        );
-
-        if (result.rowsAffected[0] === 0) {
-            return NextResponse.json({ message: 'Not found' }, { status: 404 });
-        }
-
-        return NextResponse.json({ message: 'Updated successfully' });
-    } catch (error: any) {
-        return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
+    // ตรวจสอบว่ามี server เดิมอยู่หรือไม่
+    const existing = await getInventoryById(id);
+    if (!existing) {
+      return NextResponse.json({ error: `Server with ID ${id} not found` }, { status: 404 });
     }
-}
 
-// DELETE /api/databases/[id]
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-    const { id } = params;
+    const updatedServer: DatabaseInventory = {
+      ...existing,
+      ...body,
+      inventoryID: id,
+      systemName: body.systemName?.trim() || existing.systemName,
+      serverHost: body.serverHost?.trim() || existing.serverHost,
+      port: Number(body.port) || existing.port,
+      databaseName: body.databaseName?.trim() || existing.databaseName,
+      databaseType: body.databaseType || existing.databaseType,
+      connectionUsername: body.connectionUsername?.trim() || existing.connectionUsername,
+      credentialReference: body.credentialReference || existing.credentialReference,
+      zone: body.zone || existing.zone,
+      purposeNotes: body.purposeNotes || existing.purposeNotes,
+      ownerContact: body.ownerContact || existing.ownerContact,
+    };
 
-    try {
-        const result = await queryAppDb(
-            `DELETE FROM IT_ManagementDB.dbo.DatabaseInventory WHERE inventoryID = @id`,
-            { id }
-        );
-        if (result.rowsAffected[0] === 0) {
-            return NextResponse.json({ message: 'Not found' }, { status: 404 });
-        }
+    await updateInventoryById(id, updatedServer);
 
-        return NextResponse.json({ message: 'Deleted successfully' });
-    } catch (error: any) {
-        return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
+    return NextResponse.json({ success: true, data: updatedServer });
+  } catch (err: any) {
+    console.error('PUT /api/inventory/[id] error:', err);
+    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
+  }
+
+// DELETE /api/inventory/[id]
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const { id } = params;
+
+  try {
+    const result = await queryStaticAppDb(
+      `DELETE FROM IT_ManagementDB.dbo.DatabaseInventory WHERE InventoryID = @id`,
+      { id }
+    );
+
+    if (result.rowsAffected[0] === 0) {
+      return NextResponse.json({ message: 'Not found' }, { status: 404 });
     }
+
+    return NextResponse.json({ message: 'Deleted successfully' });
+  } catch (error: any) {
+    console.error(`[DELETE /inventory/${id}]`, error.message);
+    return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
+  }
 }
