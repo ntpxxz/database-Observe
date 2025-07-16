@@ -1,24 +1,35 @@
 import React, { FC, useState } from "react";
 import { PerformanceInsight } from "@/types";
-import { X, Cpu, Clock, User, Clipboard, ClipboardCheck, Loader } from "lucide-react";
+import { X, Cpu, Clock, User, Clipboard, ClipboardCheck } from "lucide-react";
+
 
 interface InsightDetailModalProps {
   insight: PerformanceInsight | null;
   onClose: () => void;
 }
 
-const DetailItem: FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => {
+const DetailItem: FC<{ label: string; value: React.ReactNode }> = ({
+  label,
+  value,
+}) => {
   if (!value || value === "N/A" || value === 0 || value === "0") return null;
   return (
     <div className="py-1">
-      <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">{label}</dt>
+      <dt className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+        {label}
+      </dt>
       <dd className="mt-1 text-sm text-slate-200">{value}</dd>
     </div>
   );
 };
 
-export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClose }) => {
+
+export const InsightDetailModal: FC<InsightDetailModalProps> = ({
+  insight,
+  onClose,
+}) => {
   const [copied, setCopied] = useState(false);
+
   if (!insight) return null;
 
   const details = insight.details || insight;
@@ -35,7 +46,9 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClo
   const meanDuration = details?.mean_exec_time_ms;
   const waitTime = details?.wait_duration_ms ?? details?.wait_time_ms;
   const waitTimeText =
-    details?.wait_duration_ms && details?.wait_time_ms && details?.wait_duration_ms === details?.wait_time_ms
+    details?.wait_duration_ms &&
+    details?.wait_time_ms &&
+    details?.wait_duration_ms === details?.wait_time_ms
       ? details?.wait_time_ms?.toLocaleString()
       : waitTime?.toLocaleString();
 
@@ -48,6 +61,7 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClo
       alert("Failed to copy query.");
     }
   };
+ 
 
   return (
     <div
@@ -61,23 +75,33 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClo
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-slate-700">
           <h2 className="text-lg font-bold text-slate-100">{insight.title}</h2>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-700">
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full hover:bg-slate-700"
+          >
             <X size={20} className="text-slate-400" />
           </button>
         </div>
 
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-8">
-
           {/* Performance Info */}
           <section>
             <div className="flex items-center gap-2 mb-2 text-amber-400">
               <Cpu size={16} />
-              <h3 className="text-sm font-semibold uppercase tracking-wider">Performance Info</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider">
+                Performance Info
+              </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2">
-              <DetailItem label="Avg. Duration (ms)" value={meanDuration?.toLocaleString()} />
-              <DetailItem label="Total Calls" value={details?.calls?.toLocaleString()} />
+              <DetailItem
+                label="Avg. Duration (ms)"
+                value={meanDuration?.toLocaleString()}
+              />
+              <DetailItem
+                label="Total Calls"
+                value={details?.calls?.toLocaleString()}
+              />
               <DetailItem label="Severity" value={insight.severity} />
             </div>
           </section>
@@ -86,11 +110,16 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClo
           <section>
             <div className="flex items-center gap-2 mb-2 text-sky-400">
               <User size={16} />
-              <h3 className="text-sm font-semibold uppercase tracking-wider">Session Info</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider">
+                Session Info
+              </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2">
               <DetailItem label="Session ID" value={details?.session_id} />
-              <DetailItem label="Blocking Session" value={details?.blocking_session_id} />
+              <DetailItem
+                label="Blocking Session"
+                value={details?.blocking_session_id}
+              />
             </div>
           </section>
 
@@ -98,25 +127,39 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClo
           <section>
             <div className="flex items-center gap-2 mb-2 text-purple-400">
               <Clock size={16} />
-              <h3 className="text-sm font-semibold uppercase tracking-wider">Wait Info</h3>
+              <h3 className="text-sm font-semibold uppercase tracking-wider">
+                Wait Info
+              </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2">
               <DetailItem label="Wait Type" value={details?.wait_type} />
               <DetailItem label="Wait Time (ms)" value={waitTimeText} />
-              <DetailItem label="Waiting Tasks" value={details?.waiting_tasks_count?.toLocaleString()} />
-              <DetailItem label="Resource Wait Time (ms)" value={details?.resource_wait_time_ms?.toLocaleString()} />
+              <DetailItem
+                label="Waiting Tasks"
+                value={details?.waiting_tasks_count?.toLocaleString()}
+              />
+              <DetailItem
+                label="Resource Wait Time (ms)"
+                value={details?.resource_wait_time_ms?.toLocaleString()}
+              />
             </div>
           </section>
 
           {/* Full Query */}
           <section>
             <div className="flex justify-between items-center mb-2">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Full Query Text</h3>
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Full Query Text
+              </h3>
               <button
                 onClick={handleCopy}
                 className="flex items-center gap-1 text-sm text-cyan-300 hover:text-cyan-100"
               >
-                {copied ? <ClipboardCheck size={16} /> : <Clipboard size={16} />}
+                {copied ? (
+                  <ClipboardCheck size={16} />
+                ) : (
+                  <Clipboard size={16} />
+                )}
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
@@ -137,9 +180,13 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClo
             </section>
           )}
         </div>
-
+        
         {/* Footer */}
-        <div className="p-4 border-t border-slate-700 text-right">
+        
+
+
+        <div className="p-4 border-t border-slate-700 text-right items-beetweend">
+        
           <button
             onClick={onClose}
             className="bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-4 rounded-md"
@@ -147,6 +194,7 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({ insight, onClo
             Close
           </button>
         </div>
+        
       </div>
     </div>
   );

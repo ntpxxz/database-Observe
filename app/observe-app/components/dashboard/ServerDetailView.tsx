@@ -19,6 +19,8 @@ import { QueryTrendChart } from "../ui/QueryTrendChart";
 import { DiskUsageChart } from "../ui/DiskUsageChart";
 import toast from "react-hot-toast";
 import { isReadOnlySQL } from "@/lib/utils";
+import { SQLTuningModal } from "../modals/SQLTuningModal";
+import { askAiForOptimization } from "@/lib/askAiForOptimization";
 interface ServerDetailViewProps {
   server: DatabaseInventory;
   metrics: ServerMetrics | null;
@@ -93,6 +95,10 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
 
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedQuery, setSelectedQuery] = useState<string>("");
+  const [aiSuggestion, setAiSuggestion] = useState<string>("");
+
   const serverStatus = useMemo(() => {
     if (!metrics?.kpi) return "unknown";
     const { cpu = 0, memory = 0 } = metrics.kpi;
@@ -161,9 +167,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     if (!query || !server?.inventoryID) {
       toast.error("❌ Missing query or Inventory ID");
       return { error: "Missing query or inventoryId" };
-    }
-  
-    // ✅ เช็คจากฝั่ง client ก่อน
+    }  
     if (!isReadOnlySQL(query)) {
       toast.error("❌ Only single-statement read-only SELECT or safe EXEC queries are allowed.");
       return { error: "Query validation failed on client." };
@@ -191,8 +195,21 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
       return { error };
     }
   };  
+
+
   
+  const handleAskAi = async (query: string) => {
+    setIsModalOpen(true);
+    setSelectedQuery(query);
+    setAiSuggestion("Loading...");
   
+    try {
+      const suggestion = await askAiForOptimization(query);
+      setAiSuggestion(suggestion);
+    } catch (err) {
+      setAiSuggestion("❌ Failed to get suggestion.");
+    }
+  };
    
   const flattenedInsights = useMemo(() => {
     if (!insights || typeof insights !== "object") return [];
@@ -388,7 +405,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               isLoading={insightsLoading}
               onKillSession={handleKillSession}
               onExecuteQuery={handleExecuteManualQuery}
-              
+              onAskAi={handleAskAi}
             />
           </section>
         ) : (
@@ -482,6 +499,13 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
           <DiskUsageChart serverId={server.id} />
         </div>
       )}**/}
+      <SQLTuningModal
+  isOpen={isModalOpen}
+  query={selectedQuery}
+  suggestion={aiSuggestion}
+  onClose={() => setIsModalOpen(false)}
+/>
+
 
     </div>
   );

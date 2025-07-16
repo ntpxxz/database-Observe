@@ -31,10 +31,11 @@ interface PerformanceInsightsTableProps {
   isLoading?: boolean;
   onKillSession?: (sessionId: string) => Promise<void>;
   onExecuteQuery?: (query: string) => Promise<any>;
+  onAskAi?: (query: string) => Promise<void>; 
 }
 
-type SortField = 'type' | 'query' | 'duration' | 'count' | 'timestamp';
-type SortDirection = 'asc' | 'desc';
+type SortField = "type" | "query" | "duration" | "count" | "timestamp";
+type SortDirection = "asc" | "desc";
 
 interface SortConfig {
   field: SortField;
@@ -53,7 +54,9 @@ interface FilterConfig {
 const InsightIcon: FC<{ type: string }> = ({ type }) => {
   const iconMap: Record<string, JSX.Element> = {
     slow_query: <TrendingUp size={16} className="text-orange-400 mr-2" />,
-    long_running_query: <Hourglass size={16} className="text-yellow-400 mr-2" />,
+    long_running_query: (
+      <Hourglass size={16} className="text-yellow-400 mr-2" />
+    ),
     blocking_query: <Lock size={16} className="text-red-500 mr-2" />,
     deadlock_event: <Skull size={16} className="text-rose-500 mr-2" />,
     high_tempdb_usage: <Database size={16} className="text-cyan-400 mr-2" />,
@@ -61,7 +64,9 @@ const InsightIcon: FC<{ type: string }> = ({ type }) => {
     error: <AlertCircle size={16} className="text-red-400 mr-2" />,
     running_query: <Play size={16} className="text-green-400 mr-2" />,
   };
-  return iconMap[type] ?? <HelpCircle size={16} className="text-slate-500 mr-2" />;
+  return (
+    iconMap[type] ?? <HelpCircle size={16} className="text-slate-500 mr-2" />
+  );
 };
 
 const INSIGHT_TYPE_MAP: { [key: string]: string } = {
@@ -72,11 +77,14 @@ const INSIGHT_TYPE_MAP: { [key: string]: string } = {
   high_tempdb_usage: "TempDB Usage",
   wait_stats: "Wait Statistics",
   running_query: "Running Query",
-  error: "Error"
+  error: "Error",
 };
 
+
 const truncateText = (text: string, maxLength: number): string =>
-  !text || text.length <= maxLength ? text : text.substring(0, maxLength).trim() + "...";
+  !text || text.length <= maxLength
+    ? text
+    : text.substring(0, maxLength).trim() + "...";
 
 // Helper function to extract query text from insight object
 const extractQueryText = (insight: any): string => {
@@ -103,7 +111,7 @@ const extractQueryText = (insight: any): string => {
   ];
 
   for (const field of possibleQueryFields) {
-    if (field && typeof field === 'string' && field.trim() !== '') {
+    if (field && typeof field === "string" && field.trim() !== "") {
       return field;
     }
   }
@@ -112,54 +120,41 @@ const extractQueryText = (insight: any): string => {
 };
 
 function getNumericValue(insight: any, key: string): number {
-  if (!insight || typeof insight !== 'object') return 0;
+  if (!insight || typeof insight !== "object") return 0;
   const numericFallbacks: Record<string, string[]> = {
     duration: [
-      'details.mean_exec_time_ms',    
-      'mean_exec_time_ms',            
-      'avg_duration_ms',
-      'duration_ms',
-      'execution_time_ms',
-      'wait_time_ms',
-      'elapsed_time_ms',
-      'details.avg_duration_ms',
-      'details.duration_ms',
-      'details.mean_exec_time_ms'  
+      "details.mean_exec_time_ms",
+      "mean_exec_time_ms",
+      "avg_duration_ms",
+      "duration_ms",
+      "execution_time_ms",
+      "wait_time_ms",
+      "elapsed_time_ms",
+      "details.avg_duration_ms",
+      "details.duration_ms",
+      "details.mean_exec_time_ms",
     ],
 
-    count: [
-      'execution_count',
-      'count',
-      'calls',
-      'details.execution_count',
-    ],
-    cpu_time: [
-      'cpu_time',
-      'details.cpu_time',
-    ],
-    wait_time: [
-      'wait_time_ms',
-      'wait_time',
-      'details.wait_time_ms',
-    ],
-    logical_reads: [
-      'logical_reads',
-      'details.logical_reads',
-    ]
+    count: ["execution_count", "count", "calls", "details.execution_count"],
+    cpu_time: ["cpu_time", "details.cpu_time"],
+    wait_time: ["wait_time_ms", "wait_time", "details.wait_time_ms"],
+    logical_reads: ["logical_reads", "details.logical_reads"],
   };
 
   // Direct check
   const directValue = insight?.[key];
-  if (typeof directValue === 'number') return directValue;
-  if (typeof directValue === 'string' && !isNaN(Number(directValue))) return Number(directValue);
+  if (typeof directValue === "number") return directValue;
+  if (typeof directValue === "string" && !isNaN(Number(directValue)))
+    return Number(directValue);
 
   // Fallback lookup
   const fallbackKeys = numericFallbacks[key];
   if (fallbackKeys && Array.isArray(fallbackKeys)) {
     for (const path of fallbackKeys) {
-      const value = path.split('.').reduce((obj, part) => obj?.[part], insight);
-      if (typeof value === 'number') return value;
-      if (typeof value === 'string' && !isNaN(Number(value))) return Number(value);
+      const value = path.split(".").reduce((obj, part) => obj?.[part], insight);
+      if (typeof value === "number") return value;
+      if (typeof value === "string" && !isNaN(Number(value)))
+        return Number(value);
     }
   }
 
@@ -167,33 +162,38 @@ function getNumericValue(insight: any, key: string): number {
 }
 
 // CSV Export function
-const exportToCSV = (insights: any[], filename: string = 'performance_insights.csv') => {
+const exportToCSV = (
+  insights: any[],
+  filename: string = "performance_insights.csv"
+) => {
   const headers = [
-    'Type',
-    'Query/Description',
-    'Duration (ms)',
-    'Count/Calls',
-    'Session ID',
-    'Timestamp',
-    'Wait Type',
-    'CPU Time',
-    'Logical Reads'
+    "Type",
+    "Query/Description",
+    "Duration (ms)",
+    "Count/Calls",
+    "Session ID",
+    "Timestamp",
+    "Wait Type",
+    "CPU Time",
+    "Logical Reads",
   ];
 
   const csvContent = [
-    headers.join(','),
-    ...insights.map(insight => {
+    headers.join(","),
+    ...insights.map((insight) => {
       const queryText = extractQueryText(insight).replace(/"/g, '""');
-      const duration = getNumericValue(insight, 'duration');
-      const count = getNumericValue(insight, 'count');
-      const sessionId = insight.session_id ?? insight.spid ?? 'N/A';
-      const timestamp = insight.timestamp ?? insight.start_time ?? new Date().toISOString();
-      const waitType = insight.wait_type ?? 'N/A';
+      const duration = getNumericValue(insight, "duration");
+      const count = getNumericValue(insight, "count");
+      const sessionId = insight.session_id ?? insight.spid ?? "N/A";
+      const timestamp =
+        insight.timestamp ?? insight.start_time ?? new Date().toISOString();
+      const waitType = insight.wait_type ?? "N/A";
       const cpuTime = insight.cpu_time ?? insight.details?.cpu_time ?? 0;
-      const logicalReads = insight.logical_reads ?? insight.details?.logical_reads ?? 0;
+      const logicalReads =
+        insight.logical_reads ?? insight.details?.logical_reads ?? 0;
 
       return [
-        `"${INSIGHT_TYPE_MAP[insight.type] || insight.type || 'Query'}"`,
+        `"${INSIGHT_TYPE_MAP[insight.type] || insight.type || "Query"}"`,
         `"${queryText}"`,
         duration,
         count,
@@ -201,23 +201,24 @@ const exportToCSV = (insights: any[], filename: string = 'performance_insights.c
         timestamp,
         `"${waitType}"`,
         cpuTime,
-        logicalReads
-      ].join(',');
-    })
-  ].join('\n');
+        logicalReads,
+      ].join(",");
+    }),
+  ].join("\n");
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
   if (link.download !== undefined) {
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    link.style.visibility = 'hidden';
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   }
 };
+
 
 export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   insights,
@@ -225,29 +226,32 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   isLoading = false,
   onKillSession,
   onExecuteQuery,
+  onAskAi,
 }) => {
-  const [selectedInsight, setSelectedInsight] = useState<PerformanceInsight | null>(null);
+  const [selectedInsight, setSelectedInsight] =
+    useState<PerformanceInsight | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   const [showManualQuery, setShowManualQuery] = useState(false);
-  const [manualQuery, setManualQuery] = useState('');
+  const [manualQuery, setManualQuery] = useState("");
   const [queryResult, setQueryResult] = useState<any>(null);
   const [isExecutingQuery, setIsExecutingQuery] = useState(false);
   const [killingSession, setKillingSession] = useState<string | null>(null);
-  
+
+
   const ROWS_PER_PAGE = 10;
   const normalizedInsights = Array.isArray(insights) ? insights : [];
 
   // Sort configuration
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    field: 'duration',
-    direction: 'desc'
+    field: "duration",
+    direction: "desc",
   });
-  
+
   // Filter configuration
   const [filterConfig, setFilterConfig] = useState<FilterConfig>({
-    type: 'all',
-    search: '',
+    type: "all",
+    search: "",
     minDuration: 0,
     maxDuration: Number.MAX_VALUE,
     minCount: 0,
@@ -256,17 +260,17 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
 
   // Get unique types for filter dropdown
   const availableTypes = useMemo(() => {
-    const types = new Set(normalizedInsights.map(insight => insight.type || 'query'));
+    const types = new Set(
+      normalizedInsights.map((insight) => insight.type || "query")
+    );
     return Array.from(types);
   }, [normalizedInsights]);
 
   // Apply filters and sorting
   const filteredAndSortedInsights = useMemo(() => {
-
-
-    let filtered = normalizedInsights.filter(insight => {
+    let filtered = normalizedInsights.filter((insight) => {
       // Type filter
-      if (filterConfig.type !== 'all' && insight.type !== filterConfig.type) {
+      if (filterConfig.type !== "all" && insight.type !== filterConfig.type) {
         return false;
       }
 
@@ -280,13 +284,16 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
       }
 
       // Duration filter
-      const duration = getNumericValue(insight, 'duration');
-      if (duration < filterConfig.minDuration || duration > filterConfig.maxDuration) {
+      const duration = getNumericValue(insight, "duration");
+      if (
+        duration < filterConfig.minDuration ||
+        duration > filterConfig.maxDuration
+      ) {
         return false;
       }
 
       // Count filter
-      const count = getNumericValue(insight, 'count');
+      const count = getNumericValue(insight, "count");
       if (count < filterConfig.minCount || count > filterConfig.maxCount) {
         return false;
       }
@@ -294,49 +301,50 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
       return true;
     });
 
-  
-// Apply sorting
-filtered.sort((a, b) => {
-  let aValue: any, bValue: any;
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let aValue: any, bValue: any;
 
-  switch (sortConfig.field) {
-    case 'type':
-      aValue = a.type || 'query';
-      bValue = b.type || 'query';
-      break;
-    case 'query':
-      aValue = extractQueryText(a)?.toLowerCase?.() || '';
-      bValue = extractQueryText(b)?.toLowerCase?.() || '';
-      break;
-    case 'duration':
-      aValue = getNumericValue(a, 'duration');
-      bValue = getNumericValue(b, 'duration');
-      break;
-    case 'count':
-      aValue = getNumericValue(a, 'count');
-      bValue = getNumericValue(b, 'count');
-      break;
-    case 'timestamp':
-      aValue = new Date(a.timestamp || a.start_time || '1970-01-01').getTime();
-      bValue = new Date(b.timestamp || b.start_time || '1970-01-01').getTime();
-      break;
-    default:
-      return 0;
-  }
+      switch (sortConfig.field) {
+        case "type":
+          aValue = a.type || "query";
+          bValue = b.type || "query";
+          break;
+        case "query":
+          aValue = extractQueryText(a)?.toLowerCase?.() || "";
+          bValue = extractQueryText(b)?.toLowerCase?.() || "";
+          break;
+        case "duration":
+          aValue = getNumericValue(a, "duration");
+          bValue = getNumericValue(b, "duration");
+          break;
+        case "count":
+          aValue = getNumericValue(a, "count");
+          bValue = getNumericValue(b, "count");
+          break;
+        case "timestamp":
+          aValue = new Date(
+            a.timestamp || a.start_time || "1970-01-01"
+          ).getTime();
+          bValue = new Date(
+            b.timestamp || b.start_time || "1970-01-01"
+          ).getTime();
+          break;
+        default:
+          return 0;
+      }
 
-  // Robust sorting logic
-  if (typeof aValue === 'string' && typeof bValue === 'string') {
-    return sortConfig.direction === 'asc'
-      ? aValue.localeCompare(bValue)
-      : bValue.localeCompare(aValue);
-  } else {
-    const aNum = typeof aValue === 'number' ? aValue : 0;
-    const bNum = typeof bValue === 'number' ? bValue : 0;
-    return sortConfig.direction === 'asc'
-      ? aNum - bNum
-      : bNum - aNum;
-  }
-});
+      // Robust sorting logic
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return sortConfig.direction === "asc"
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue);
+      } else {
+        const aNum = typeof aValue === "number" ? aValue : 0;
+        const bNum = typeof bValue === "number" ? bValue : 0;
+        return sortConfig.direction === "asc" ? aNum - bNum : bNum - aNum;
+      }
+    });
 
     return filtered;
   }, [normalizedInsights, filterConfig, sortConfig]);
@@ -347,19 +355,20 @@ filtered.sort((a, b) => {
   }, [filteredAndSortedInsights, serverName]);
 
   console.log("Filtered length:", filteredAndSortedInsights.length);
-  
+
   // Handle sorting
   const handleSort = (field: SortField) => {
-    setSortConfig(prev => ({
+    setSortConfig((prev) => ({
       field,
-      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+      direction:
+        prev.field === field && prev.direction === "asc" ? "desc" : "asc",
     }));
   };
 
   // Handle session kill
   const handleKillSession = async (sessionId: string) => {
     if (!onKillSession) return;
-    
+
     if (window.confirm(`Are you sure you want to kill session ${sessionId}?`)) {
       try {
         setKillingSession(sessionId);
@@ -388,22 +397,34 @@ filtered.sort((a, b) => {
     }
   };
 
+
+  
   // Render sort icon
   const renderSortIcon = (field: SortField) => {
     if (sortConfig.field !== field) {
       return <ArrowUpDown size={14} className="text-slate-500" />;
     }
-    return sortConfig.direction === 'asc' 
-      ? <ArrowUp size={14} className="text-blue-400" />
-      : <ArrowDown size={14} className="text-blue-400" />;
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp size={14} className="text-blue-400" />
+    ) : (
+      <ArrowDown size={14} className="text-blue-400" />
+    );
   };
 
   if (isLoading) {
-    return <div className="text-slate-500 text-sm text-center py-8 animate-pulse">Loading performance data...</div>;
+    return (
+      <div className="text-slate-500 text-sm text-center py-8 animate-pulse">
+        Loading performance data...
+      </div>
+    );
   }
 
   if (!insights) {
-    return <p className="text-slate-500 text-sm text-center py-4">No data available</p>;
+    return (
+      <p className="text-slate-500 text-sm text-center py-4">
+        No data available
+      </p>
+    );
   }
 
   if (!Array.isArray(insights) && "error" in insights) {
@@ -425,9 +446,14 @@ filtered.sort((a, b) => {
     );
   }
 
-  const totalPages = Math.ceil(filteredAndSortedInsights.length / ROWS_PER_PAGE);
+  const totalPages = Math.ceil(
+    filteredAndSortedInsights.length / ROWS_PER_PAGE
+  );
   const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
-  const currentInsights = filteredAndSortedInsights.slice(startIndex, startIndex + ROWS_PER_PAGE);
+  const currentInsights = filteredAndSortedInsights.slice(
+    startIndex,
+    startIndex + ROWS_PER_PAGE
+  );
 
   return (
     <div className="space-y-4">
@@ -437,21 +463,21 @@ filtered.sort((a, b) => {
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              showFilters 
-                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/50' 
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              showFilters
+                ? "bg-blue-500/20 text-blue-300 border border-blue-500/50"
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
             }`}
           >
             <Filter size={16} />
             Filters
           </button>
-          
+
           <button
             onClick={() => setShowManualQuery(!showManualQuery)}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              showManualQuery 
-                ? 'bg-green-500/20 text-green-300 border border-green-500/50' 
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+              showManualQuery
+                ? "bg-green-500/20 text-green-300 border border-green-500/50"
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
             }`}
           >
             <Terminal size={16} />
@@ -475,14 +501,18 @@ filtered.sort((a, b) => {
         <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Type</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Type
+              </label>
               <select
                 value={filterConfig.type}
-                onChange={(e) => setFilterConfig(prev => ({ ...prev, type: e.target.value }))}
+                onChange={(e) =>
+                  setFilterConfig((prev) => ({ ...prev, type: e.target.value }))
+                }
                 className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
               >
                 <option value="all">All Types</option>
-                {availableTypes.map(type => (
+                {availableTypes.map((type) => (
                   <option key={type} value={type}>
                     {INSIGHT_TYPE_MAP[type] || type}
                   </option>
@@ -491,25 +521,42 @@ filtered.sort((a, b) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Search Query</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Search Query
+              </label>
               <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
+                <Search
+                  size={16}
+                  className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
+                />
                 <input
                   type="text"
                   placeholder="Search in queries..."
                   value={filterConfig.search}
-                  onChange={(e) => setFilterConfig(prev => ({ ...prev, search: e.target.value }))}
+                  onChange={(e) =>
+                    setFilterConfig((prev) => ({
+                      ...prev,
+                      search: e.target.value,
+                    }))
+                  }
                   className="w-full bg-slate-700 border border-slate-600 rounded-lg pl-10 pr-3 py-2 text-sm text-slate-200"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Min Duration (ms)</label>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Min Duration (ms)
+              </label>
               <input
                 type="number"
                 value={filterConfig.minDuration}
-                onChange={(e) => setFilterConfig(prev => ({ ...prev, minDuration: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setFilterConfig((prev) => ({
+                    ...prev,
+                    minDuration: Number(e.target.value),
+                  }))
+                }
                 className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200"
               />
             </div>
@@ -517,17 +564,20 @@ filtered.sort((a, b) => {
 
           <div className="flex justify-between items-center">
             <span className="text-sm text-slate-400">
-              Showing {filteredAndSortedInsights.length} of {normalizedInsights.length} insights
+              Showing {filteredAndSortedInsights.length} of{" "}
+              {normalizedInsights.length} insights
             </span>
             <button
-              onClick={() => setFilterConfig({
-                type: 'all',
-                search: '',
-                minDuration: 0,
-                maxDuration: 999999,
-                minCount: 0,
-                maxCount: 999999,
-              })}
+              onClick={() =>
+                setFilterConfig({
+                  type: "all",
+                  search: "",
+                  minDuration: 0,
+                  maxDuration: 999999,
+                  minCount: 0,
+                  maxCount: 999999,
+                })
+              }
               className="flex items-center gap-2 px-3 py-1 bg-slate-600 hover:bg-slate-500 text-slate-200 rounded text-sm transition-colors"
             >
               <X size={14} />
@@ -540,9 +590,10 @@ filtered.sort((a, b) => {
       {/* Manual Query Panel */}
       {showManualQuery && (
         <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-4">
-          
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">SQL Query</label>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              SQL Query
+            </label>
             <textarea
               value={manualQuery}
               onChange={(e) => setManualQuery(e.target.value)}
@@ -551,7 +602,7 @@ filtered.sort((a, b) => {
               rows={4}
             />
           </div>
-          
+
           <div className="flex gap-2">
             <button
               onClick={handleExecuteQuery}
@@ -574,7 +625,9 @@ filtered.sort((a, b) => {
 
           {queryResult && (
             <div className="mt-4">
-              <h4 className="text-sm font-medium text-slate-300 mb-2">Query Result:</h4>
+              <h4 className="text-sm font-medium text-slate-300 mb-2">
+                Query Result:
+              </h4>
               <pre className="bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-slate-200 overflow-auto max-h-60">
                 {queryResult.error ? (
                   <span className="text-red-300">{queryResult.error}</span>
@@ -594,38 +647,38 @@ filtered.sort((a, b) => {
             <tr>
               <th className="px-4 py-3 font-normal">
                 <button
-                  onClick={() => handleSort('type')}
+                  onClick={() => handleSort("type")}
                   className="flex items-center gap-1 hover:text-slate-200 transition-colors"
                 >
                   Type
-                  {renderSortIcon('type')}
+                  {renderSortIcon("type")}
                 </button>
               </th>
               <th className="px-4 py-3 font-normal">
                 <button
-                  onClick={() => handleSort('query')}
+                  onClick={() => handleSort("query")}
                   className="flex items-center gap-1 hover:text-slate-200 transition-colors"
                 >
                   Query / Insight Title
-                  {renderSortIcon('query')}
+                  {renderSortIcon("query")}
                 </button>
               </th>
               <th className="px-4 py-3 font-normal text-right">
                 <button
-                  onClick={() => handleSort('duration')}
+                  onClick={() => handleSort("duration")}
                   className="flex items-center gap-1 hover:text-slate-200 transition-colors ml-auto"
                 >
                   Duration / Value
-                  {renderSortIcon('duration')}
+                  {renderSortIcon("duration")}
                 </button>
               </th>
               <th className="px-4 py-3 font-normal text-right">
                 <button
-                  onClick={() => handleSort('count')}
+                  onClick={() => handleSort("count")}
                   className="flex items-center gap-1 hover:text-slate-200 transition-colors ml-auto"
                 >
                   Count / Calls
-                  {renderSortIcon('count')}
+                  {renderSortIcon("count")}
                 </button>
               </th>
               <th className="px-4 py-3 font-normal text-center">Actions</th>
@@ -633,15 +686,21 @@ filtered.sort((a, b) => {
           </thead>
           <tbody>
             {currentInsights.map((insight, index) => {
-              const insightId = insight.id || insight.session_id || insight.spid || `insight-${index}`;
+              const insightId =
+                insight.id ||
+                insight.session_id ||
+                insight.spid ||
+                `insight-${index}`;
               const sessionId = insight.session_id || insight.spid;
-              const displayType = INSIGHT_TYPE_MAP[insight.type] || insight.type || "Query";
+              const displayType =
+                INSIGHT_TYPE_MAP[insight.type] || insight.type || "Query";
               const queryText = extractQueryText(insight);
-              const timeValue = getNumericValue(insight, 'duration');
-              const durationDisplay = typeof timeValue === 'number' && timeValue > 1000 
-                ? `${(timeValue / 1000).toFixed(2)}s`
-                : `${timeValue}ms`;
-              const callCount = getNumericValue(insight, 'count');
+              const timeValue = getNumericValue(insight, "duration");
+              const durationDisplay =
+                typeof timeValue === "number" && timeValue > 1000
+                  ? `${(timeValue / 1000).toFixed(2)}s`
+                  : `${timeValue}ms`;
+              const callCount = getNumericValue(insight, "count");
 
               return (
                 <tr
@@ -654,28 +713,44 @@ filtered.sort((a, b) => {
                       {displayType}
                     </div>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-300 max-w-md" title={queryText}>
+                  <td
+                    className="px-4 py-3 font-mono text-xs text-slate-300 max-w-md"
+                    title={queryText}
+                  >
                     {truncateText(queryText, 100)}
                   </td>
                   <td className="px-4 py-3 font-semibold text-amber-300 text-right">
                     {durationDisplay}
                   </td>
                   <td className="px-4 py-3 text-slate-400 text-right">
-                    {typeof callCount === "number" ? callCount.toLocaleString() : callCount}
+                    {typeof callCount === "number"
+                      ? callCount.toLocaleString()
+                      : callCount}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-2">                      
+                      <button             
+                    
+                    
+                    onClick={() => {
+                      const extracted = extractQueryText(insight);
+                      console.log("Sending to AI:", extracted);
+                      onAskAi?.(extracted);
+                    }}                 
+                        className="text-xs text-sky-400 hover:underline"
+                      >
+                        Ask
+                      </button>
                       <button
-                      
-                        onClick={
-                          () => {
-                            console.log("Selected insight:", insight);
-                            setSelectedInsight(insight)}}
+                        onClick={() => {
+                          console.log("Selected insight:", insight);
+                          setSelectedInsight(insight);
+                        }}
                         className="text-sky-300 hover:text-sky-200 font-medium py-1 px-2 rounded text-xs hover:bg-sky-500/10 transition-colors"
                       >
                         Details
                       </button>
-                      
+
                       {sessionId && onKillSession && (
                         <button
                           onClick={() => handleKillSession(sessionId)}
@@ -706,7 +781,12 @@ filtered.sort((a, b) => {
         {/* Pagination */}
         <div className="flex justify-between items-center px-4 py-3 text-sm text-slate-400 bg-slate-900/30">
           <span>
-            Showing {startIndex + 1}-{Math.min(startIndex + ROWS_PER_PAGE, filteredAndSortedInsights.length)} of {filteredAndSortedInsights.length} insights
+            Showing {startIndex + 1}-
+            {Math.min(
+              startIndex + ROWS_PER_PAGE,
+              filteredAndSortedInsights.length
+            )}{" "}
+            of {filteredAndSortedInsights.length} insights
           </span>
           <div className="flex items-center gap-4">
             <span>
@@ -721,7 +801,9 @@ filtered.sort((a, b) => {
                 <ChevronLeft size={20} />
               </button>
               <button
-                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                }
                 disabled={currentPage === totalPages}
                 className="p-1 rounded-md hover:bg-slate-700 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
               >
@@ -733,9 +815,12 @@ filtered.sort((a, b) => {
       </div>
 
       {selectedInsight && (
-        <InsightDetailModal insight={selectedInsight} onClose={() => setSelectedInsight(null)} />
+        <InsightDetailModal
+          insight={selectedInsight}
+          onClose={() => setSelectedInsight(null)}
+        />
       )}
-      
+
     </div>
   );
 };
