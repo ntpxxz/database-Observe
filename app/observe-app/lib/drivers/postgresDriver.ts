@@ -2,7 +2,7 @@ import { Pool } from 'pg';
 import { Driver, Metrics, AnyPool, PerformanceInsight } from '@/types';
 
 const postgresDriver: Driver = {
-    connect: async (config: any): Promise<AnyPool> => {
+    connect: async (config: unknown): Promise<AnyPool> => {
         // PostgreSQL driver creates a pool which manages connections automatically.
         return new Pool(config);
     },

@@ -172,7 +172,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
                 Port as port,
                 Zone as zone,
                 DatabaseType as databaseType,
-                DatabaseName as databaseName,
                 ConnectionUsername as connectionUsername,
                 CredentialReference as credentialReference
             FROM IT_ManagementDB.dbo.databaseInventory 
@@ -224,7 +223,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         targetPool = await driver.connect(connectionConfig);
 
         // Handle action
-        let result: any = {};
+        let result: unknown = {};
         if (action === 'kill' && driver.killQuery) {
             result = await driver.killQuery(targetPool, query);
         } else if (action === 'explain' && driver.explainQuery) {

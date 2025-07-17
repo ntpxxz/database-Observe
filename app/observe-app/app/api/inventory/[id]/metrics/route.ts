@@ -146,7 +146,7 @@ export async function GET(
       },
       
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     const duration = Date.now() - startTime;
     console.error(
       `[API Route] CRITICAL ERROR - ID: ${id}, Duration: ${duration}ms`,

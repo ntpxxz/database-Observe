@@ -5,7 +5,7 @@ export function analyzePerformanceInsights(results: any[]): PerformanceInsight[]
       if (result.status === "fulfilled") {
         const { key, rows } = result.value;
   
-        rows.forEach((row: any) => {
+        rows.forEach((row: unknown) => {
           insights.push({
             type: key,
             severity: key === "slowQueries" ? "high" : "medium",

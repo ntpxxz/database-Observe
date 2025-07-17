@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     targetPool = await driver.connect(connectionConfig);
     return NextResponse.json({ success: true, message: 'Connection successful!' });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[Test Connection Error]', err.message);
     return NextResponse.json(
       { success: false, message: err.message || 'An unknown error occurred.' },

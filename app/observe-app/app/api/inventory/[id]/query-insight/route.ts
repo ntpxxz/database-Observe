@@ -78,7 +78,7 @@ export async function GET(
 
     // 5. Send result to frontend
     return NextResponse.json(finalInsights);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("❌ Error in /query-insight route:", error.message);
     return NextResponse.json(
       { message: "Failed to load query insights", error: error.message },

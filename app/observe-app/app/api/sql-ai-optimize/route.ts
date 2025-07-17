@@ -41,7 +41,7 @@ ${query}
       }),
       { status: 200 }
     );
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("AI Error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,

@@ -29,7 +29,7 @@ const useInventoryManager = () => {
       const serverList: DatabaseInventory[] = Object.values(zonesData).flat();
 
       setServers(serverList.sort((a, b) => a.systemName.localeCompare(b.systemName)));
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(err.message);
       setServers([]);
     } finally {
@@ -62,7 +62,7 @@ const useDatabaseMetrics = (server: DatabaseInventory | null) => {
 
       const json = await res.json();
       setMetrics(json);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(err.message);
       setMetrics(null);
     } finally {
@@ -82,7 +82,7 @@ const useDatabaseMetrics = (server: DatabaseInventory | null) => {
 };
 
 const useHardwareMetrics = (server: DatabaseInventory | null) => {
-  const [hardware, setHardware] = useState<any>(null);
+  const [hardware, setHardware] = useState<unknown>(null);
   const [hardwareError, setHardwareError] = useState<string | null>(null);
 
   const fetchHardware = useCallback(async () => {
@@ -92,7 +92,7 @@ const useHardwareMetrics = (server: DatabaseInventory | null) => {
       if (!res.ok) throw new Error("Failed to fetch hardware metrics");
       const json = await res.json();
       setHardware(json);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setHardwareError(err.message);
       setHardware(null);
     }
@@ -123,7 +123,7 @@ const useQueryInsights = (server: DatabaseInventory | null) => {
 
       const json: PerformanceInsight = await res.json();
       setInsights(json);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(err.message || "Unknown error");
       setInsights(null);
     } finally {
@@ -209,7 +209,7 @@ const Home: FC = () => {
       }
 
       if (activeServer?.inventoryID === data.inventoryID) setActiveServer(data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       alert(`Error updating server: ${error.message || "An unknown error occurred."}`);
     } finally {
       await refreshServers();
@@ -227,7 +227,7 @@ const Home: FC = () => {
           return;
         }
         if (activeServer?.inventoryID === id) setActiveServer(null);
-      } catch (error: any) {
+      } catch (error: unknown) {
         alert(`Error deleting server: ${error.message || "An unknown error occurred."}`);
       } finally {
         await refreshServers();

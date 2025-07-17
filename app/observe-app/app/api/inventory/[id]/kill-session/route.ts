@@ -11,7 +11,7 @@ export async function POST(request: NextRequest, context: { params: { id: string
     const pool = await getSQLConnectionByInventory(db);
     await mssqlDriver.killSession(pool, sessionId);
     return NextResponse.json({ message: `Session ${sessionId} killed.` });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return NextResponse.json({ message: err.message }, { status: 500 });
   }
 }

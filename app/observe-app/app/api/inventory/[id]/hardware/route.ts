@@ -151,7 +151,7 @@ export async function GET(
     };
 
     return NextResponse.json(responseData);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[API Combined Metrics Error] for ID ${id}:`, error);
     return NextResponse.json(
       { error: "Failed to fetch combined metrics.", details: error.message },

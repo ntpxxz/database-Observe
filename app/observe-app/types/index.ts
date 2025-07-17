@@ -7,8 +7,8 @@ export type AnyPool = PgPool | MssqlPool;
 
 // Performance insight structure
 export interface PerformanceInsight {
-  details: any;
-  title: any;
+  details: unknown;
+  title: unknown;
   id?: number;
   query?: string;
   duration?: number;
@@ -140,20 +140,20 @@ export interface Metrics {
 
   stats?: {
     cache_hit_rate?: string | number;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   performanceInsights: PerformanceInsight[] | { error: string };
 }
 
 // Update Driver interface to use specific config type
 export interface Driver {
-  [x: string]: any;
+  [x: string]: unknown;
   connect: (config: DatabaseConnectionConfig) => Promise<AnyPool>;
   disconnect: (pool: AnyPool) => Promise<void>;
   getMetrics: (pool: AnyPool) => Promise<Partial<Metrics>>;
   getQueryAnalysis: (pool: AnyPool) => Promise<QueryAnalysis>;
   getOptimizationSuggestions:(pool: AnyPool) => Promise<OptimizationSuggestions>;
-  getProblemQueries: (pool: AnyPool) => Promise<any>;
+  getProblemQueries: (pool: AnyPool) => Promise<unknown>;
   getPerformanceInsights: (pool: AnyPool) => Promise<PerformanceInsight[] | { error: string }>;
   generateInsights?: (data: QueryAnalysis) => PerformanceInsight[];
 
@@ -303,7 +303,7 @@ export interface ErrorResponse {
 }
 
 export interface SuccessResponse {
-  data: any; // Replace with your actual data type
+  data: unknown; // Replace with your actual data type
   meta: {
     id: string;
     analysisLevel: AnalysisLevel;
@@ -329,7 +329,7 @@ export interface InsightItem {
   wait_type?: string;
   resource?: string;
   count?: number;
-  [key: string]: any;
+  [key: string]: unknown;
   type?: InsightType; //
 }
 

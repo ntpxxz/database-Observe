@@ -52,7 +52,7 @@ export async function getSQLConnectionByInventory(db: DatabaseInventory): Promis
 export async function queryAppDb(
   db: DatabaseInventory,
   queryTemplate: string,
-  params: { [key: string]: any } = {}
+  params: { [key: string]: unknown } = {}
 ) {
   const pool = await getSQLConnectionByInventory(db);
   const request = pool.request();

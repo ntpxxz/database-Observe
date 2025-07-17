@@ -1,17 +1,27 @@
-# Dockerfile
-FROM node:23.11.0-alpine AS builder
-
+# === Base image with Node
+FROM node:23.11.0-alpine AS deps
 WORKDIR /app
+
+# Copy only package files first
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY next.config.ts ./
+
+RUN npm install
+
+# === Builder stage
+FROM node:23.11.0-alpine AS builder
+WORKDIR /app
+
+COPY --from=deps /app ./
 COPY . .
 
-# Install dependencies and build
-RUN npm install
 RUN npm run build
 
-# Production image
-FROM node:23.11.0-alpine
-
+# === Production runtime
+FROM node:23.11.0-alpine AS runner
 WORKDIR /app
+
 COPY --from=builder /app ./
 
 EXPOSE 3000

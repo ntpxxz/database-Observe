@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getServerConnection } from '@/lib/db/connection';
+// import { getServerConnection } from '@/lib/db/connection';
 
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
@@ -28,9 +28,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Disk usage error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error.message }), {
       status: 500,
     });
   }

@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     console.log("✅ Query succeeded:", response);
     return NextResponse.json({ result: response });
     
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Manual Query Error]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

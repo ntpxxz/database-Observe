@@ -6,7 +6,7 @@ export function isSystemDatabase(dbName: string): boolean {
   return SYSTEM_DATABASES.includes(dbName);
 }
 
-export function flattenInsights(insightsObj: any): PerformanceInsight[] {
+export function flattenInsights(insightsObj: unknown): PerformanceInsight[] {
   if (!insightsObj || typeof insightsObj !== "object") return [];
 
   const keys = ["slowQueries", "longRunningQueries", "blockingQueries", "deadlocks", "tempdbUsage", "waitStats", "insights"];
@@ -16,11 +16,11 @@ export function flattenInsights(insightsObj: any): PerformanceInsight[] {
     if (Array.isArray(insightsObj[key])) {
       result.push(
         ...insightsObj[key]
-          .filter((item: any) => {
+          .filter((item: unknown) => {
             const db = item?.database_name || item?.db_name || item?.database;
             return db && !isSystemDatabase(db);
           })
-          .map((item: any, index: number) => ({
+          .map((item: unknown, index: number) => ({
             id: item.id ?? `${key}_${index}`,
             type: key === "slowQueries"
               ? "slow_query"

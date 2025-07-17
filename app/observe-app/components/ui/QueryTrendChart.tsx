@@ -9,7 +9,7 @@ interface QueryTrendChartProps {
 }
 
 export const QueryTrendChart: React.FC<QueryTrendChartProps> = ({ inventoryID }) => {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<unknown>(null);
 
   useEffect(() => {
     fetch(`/api/inventory/${inventoryID}/query-trend`)
