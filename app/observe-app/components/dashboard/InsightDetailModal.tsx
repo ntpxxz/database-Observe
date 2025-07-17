@@ -1,8 +1,8 @@
+'use client'
 import React, { FC, useState } from "react";
 import { PerformanceInsight } from "@/types";
-import { X, Cpu, Clock, User, Clipboard, ClipboardCheck } from "lucide-react";
-
-
+import { X, Cpu, Clock, User, Clipboard, ClipboardCheck, Bot } from "lucide-react";
+import { SQLTuningModal } from "../modals/SQLTuningModal";
 interface InsightDetailModalProps {
   insight: PerformanceInsight | null;
   onClose: () => void;
@@ -22,7 +22,6 @@ const DetailItem: FC<{ label: string; value: React.ReactNode }> = ({
     </div>
   );
 };
-
 
 export const InsightDetailModal: FC<InsightDetailModalProps> = ({
   insight,
@@ -61,7 +60,10 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
       alert("Failed to copy query.");
     }
   };
- 
+  
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [showSQLTuningModal, setShowSQLTuningModal] = useState(false);
+
 
   return (
     <div
@@ -180,22 +182,35 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
             </section>
           )}
         </div>
-        
+
         {/* Footer */}
-        
-
-
-        <div className="p-4 border-t border-slate-700 text-right items-beetweend">
-        
+        <div className="p-6 border-t border-slate-700 flex justify-between">
+          <button
+            onClick={() => {setShowSQLTuningModal(true)}}
+            
+            className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-md"
+          >
+           <Bot/> 
+          </button>
           <button
             onClick={onClose}
-            className="bg-sky-600 hover:bg-sky-500 text-white font-bold py-2 px-4 rounded-md"
+            className="bg-sky-600 hover:bg-sky-500 text-white  py-2 px-4 rounded-md"
           >
             Close
           </button>
         </div>
-        
       </div>
-    </div>
+      
+      {showSQLTuningModal && (
+    <SQLTuningModal
+          query={fullQuery}
+          onClose={() => setShowSQLTuningModal(false)} isOpen={true} suggestion={null}    />
+  )}
+    
+      
+    </div>    
   );
+ 
+  
+  
 };

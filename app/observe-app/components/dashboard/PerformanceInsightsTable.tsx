@@ -21,6 +21,7 @@ import {
   Square,
   Terminal,
   AlertTriangle,
+  Bot,
 } from "lucide-react";
 import { PerformanceInsight } from "@/types";
 import { InsightDetailModal } from "./InsightDetailModal";
@@ -737,9 +738,9 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                       console.log("Sending to AI:", extracted);
                       onAskAi?.(extracted);
                     }}                 
-                        className="text-xs text-sky-400 hover:underline"
+                        className="text-xs text-green-500 hover:text-sky-200 font-medium py-1 px-2 rounded text-xs hover:bg-sky-500/10 transition-colors"
                       >
-                        Ask
+                       <Bot />
                       </button>
                       <button
                         onClick={() => {

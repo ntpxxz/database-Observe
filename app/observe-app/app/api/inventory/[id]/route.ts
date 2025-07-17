@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       ...server,
       databases: databaseList.recordset,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[GET /inventory/${id}]`, error.message);
     return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
   }
@@ -68,10 +68,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     await updateInventoryById(id, updatedServer);
 
     return NextResponse.json({ success: true, data: updatedServer });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('PUT /api/inventory/[id] error:', err);
     return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 });
   }
+}
 
 // DELETE /api/inventory/[id]
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -88,7 +89,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     }
 
     return NextResponse.json({ message: 'Deleted successfully' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[DELETE /inventory/${id}]`, error.message);
     return NextResponse.json({ message: `Error: ${error.message}` }, { status: 500 });
   }
