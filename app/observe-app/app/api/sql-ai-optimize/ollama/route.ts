@@ -1,4 +1,6 @@
-export const runtime = 'nodejs'; // ถ้าใช้ Edge ต้องตัด fetch localhost ออก
+import { error } from "console";
+
+export const runtime = "nodejs"; // ถ้าใช้ Edge ต้องตัด fetch localhost ออก
 
 export const POST = async (req: Request) => {
   try {
@@ -29,7 +31,7 @@ ${query}
       console.error("Ollama error:", error);
       return new Response(
         JSON.stringify({ error: "Ollama response error", detail: error }),
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -39,11 +41,11 @@ ${query}
       JSON.stringify({
         suggestion: result.response?.trim() || "No response from LLM.",
       }),
-      { status: 200 }
+      { status: 200 },
     );
-  } catch (err: unknown) {
+  } catch (err) {
     console.error("AI Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error }), {
       status: 500,
     });
   }

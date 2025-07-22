@@ -39,42 +39,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const connectionConfig =
-      body.databaseType === 'MSSQL'
-        ? {
-            server: body.serverHost,
-            user: body.connectionUsername,
-            password: body.credentialReference,
-            database: '', // allow empty to connect to server only
-            port: body.port,
-            options: {
-              encrypt: false,
-              trustServerCertificate: true,
-              enableArithAbort: true
-            },
-            connectionTimeout: 10000
-          }
-        : {
-            host: body.serverHost,
-            user: body.connectionUsername,
-            password: body.credentialReference,
-            database: '', // leave empty
-            port: body.port,
-            connectionTimeout: 5000
-          };
+    // Create standardized DatabaseConnectionConfig
+    const connectionConfig = {
+      serverHost: body.serverHost,
+      port: body.port,
+      connectionUsername: body.connectionUsername,
+      credentialReference: body.credentialReference,
+      databaseType: body.databaseType,
+      encrypt: body.databaseType === 'MSSQL' ? false : undefined,
+      // Add any other required properties based on your DatabaseConnectionConfig type
+      connectionTimeout: body.databaseType === 'MSSQL' ? 10000 : 5000,
+      // MSSQL specific options
+      ...(body.databaseType === 'MSSQL' && {
+        trustServerCertificate: true,
+        enableArithAbort: true
+      })
+    };
 
     console.log(`[TestConnection] config:`, {
       ...connectionConfig,
-      password: '***'
+      credentialReference: '***'
     });
 
     targetPool = await driver.connect(connectionConfig);
     return NextResponse.json({ success: true, message: 'Connection successful!' });
 
   } catch (err: unknown) {
-    console.error('[Test Connection Error]', err.message);
+    const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+    console.error('[Test Connection Error]', errorMessage);
     return NextResponse.json(
-      { success: false, message: err.message || 'An unknown error occurred.' },
+      { success: false, message: errorMessage },
       { status: 400 }
     );
   } finally {

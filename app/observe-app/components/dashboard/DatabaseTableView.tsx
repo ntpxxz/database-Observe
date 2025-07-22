@@ -15,7 +15,7 @@ interface DatabaseInfo {
 }
 
 interface Props {
-  databaseInfo: DatabaseInfo[]
+  databaseInfo: DatabaseInfo[];
   inventoryID: string;
 }
 
@@ -40,10 +40,10 @@ export const DatabaseTableView: FC<Props> = ({ databaseInfo, inventoryID }) => {
   const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
   const currentData = databaseInfo.slice(
     startIndex,
-    startIndex + ROWS_PER_PAGE
+    startIndex + ROWS_PER_PAGE,
   );
   const handleClick = (dbName: string) => {
-    const databaseName = dbName
+    const databaseName = dbName;
     router.push(`/inventory/${inventoryID}/database/${databaseName}/insight`);
   };
 
@@ -80,13 +80,15 @@ export const DatabaseTableView: FC<Props> = ({ databaseInfo, inventoryID }) => {
                     {db.sizeMB.toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                  <span
-            className={`px-3 py-1 rounded-full text-xs font-medium bg-${
-              db.state === "ONLINE" ? "green" : "red"
-            }-500/10 text-${db.state === "ONLINE" ? "green" : "red"}-400`}
-          >
-             {db.state.toUpperCase()}
-          </span>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-medium bg-${
+                        db.state === "ONLINE" ? "green" : "red"
+                      }-500/10 text-${
+                        db.state === "ONLINE" ? "green" : "red"
+                      }-400`}
+                    >
+                      {db.state.toUpperCase()}
+                    </span>
                   </td>
                   <td className="px-4 py-3 text-right text-slate-300">
                     {db.recoveryModel}

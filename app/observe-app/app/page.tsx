@@ -7,7 +7,12 @@ import { ServerDetailView } from "@/components/dashboard/ServerDetailView";
 import { AddServerModal } from "@/components/shared/forms/AddServerModal";
 import { EditDatabaseModal } from "@/components/shared/forms/EditDatabaseModal";
 import { ServerDetailModal } from "@/components/shared/forms/ServerDetailModal";
-import { DatabaseInventory, ServerMetrics, ServerFormData, PerformanceInsight } from "@/types";
+import {
+  DatabaseInventory,
+  ServerMetrics,
+  ServerFormData,
+  PerformanceInsight,
+} from "@/types";
 import { AlertCircle } from "lucide-react";
 import { DatabaseTableView } from "@/components/dashboard/DatabaseTableView";
 
@@ -28,8 +33,11 @@ const useInventoryManager = () => {
       const zonesData: Record<string, DatabaseInventory[]> = data.zones || {};
       const serverList: DatabaseInventory[] = Object.values(zonesData).flat();
 
-      setServers(serverList.sort((a, b) => a.systemName.localeCompare(b.systemName)));
+      setServers(
+        serverList.sort((a, b) => a.systemName.localeCompare(b.systemName)),
+      );
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       setError(err.message);
       setServers([]);
     } finally {
@@ -63,6 +71,7 @@ const useDatabaseMetrics = (server: DatabaseInventory | null) => {
       const json = await res.json();
       setMetrics(json);
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       setError(err.message);
       setMetrics(null);
     } finally {
@@ -93,6 +102,7 @@ const useHardwareMetrics = (server: DatabaseInventory | null) => {
       const json = await res.json();
       setHardware(json);
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       setHardwareError(err.message);
       setHardware(null);
     }
@@ -118,12 +128,15 @@ const useQueryInsights = (server: DatabaseInventory | null) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/inventory/${server.inventoryID}/query-insight`);
+      const res = await fetch(
+        `/api/inventory/${server.inventoryID}/query-insight`,
+      );
       if (!res.ok) throw new Error("Failed to fetch query insights");
 
       const json: PerformanceInsight = await res.json();
       setInsights(json);
     } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       setError(err.message || "Unknown error");
       setInsights(null);
     } finally {
@@ -143,28 +156,54 @@ const useQueryInsights = (server: DatabaseInventory | null) => {
   };
 };
 
-
 const Home: FC = () => {
-  const [modal, setModal] = useState<{ type: "add" | "edit" | "detail" | null; data?: any }>({ type: null });
-  const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(null);
-  const { servers, isLoading: isInventoryLoading, error: inventoryError, refreshServers } = useInventoryManager();
-  const { metrics, isLoading: isMetricsLoading, error: metricsError, refreshMetrics } = useDatabaseMetrics(activeServer);
-  const { hardware, hardwareError, refreshHardware } = useHardwareMetrics(activeServer);
-  const { insights, error: insightError, loading: insightLoading, refreshInsights } = useQueryInsights(activeServer);
+  const [modal, setModal] = useState<{
+    type: "add" | "edit" | "detail" | null;
+    data?: any;
+  }>({ type: null });
+  const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(
+    null,
+  );
+  const {
+    servers,
+    isLoading: isInventoryLoading,
+    error: inventoryError,
+    refreshServers,
+  } = useInventoryManager();
+  const {
+    metrics,
+    isLoading: isMetricsLoading,
+    error: metricsError,
+    refreshMetrics,
+  } = useDatabaseMetrics(activeServer);
+  const { hardware, hardwareError, refreshHardware } =
+    useHardwareMetrics(activeServer);
+  const {
+    insights,
+    error: insightError,
+    loading: insightLoading,
+    refreshInsights,
+  } = useQueryInsights(activeServer);
 
-  const zones = servers.reduce((acc: Record<string, DatabaseInventory[]>, server) => {
-    const zone = server.zone || "Uncategorized";
-    if (!acc[zone]) acc[zone] = [];
-    acc[zone].push(server);
-    return acc;
-  }, {});
+  const zones = servers.reduce(
+    (acc: Record<string, DatabaseInventory[]>, server) => {
+      const zone = server.zone || "Uncategorized";
+      if (!acc[zone]) acc[zone] = [];
+      acc[zone].push(server);
+      return acc;
+    },
+    {},
+  );
 
   const mergedMetrics = metrics
     ? { ...metrics, hardware: { ...hardware } ?? {}, hardwareError }
     : { databaseMetrics: {}, hardware: {}, hardwareError: null };
 
   useEffect(() => {
-    if (activeServer && !servers.find((s) => s.inventoryID === activeServer.inventoryID)) {
+    if (
+      activeServer &&
+      !servers.find((s) => s.inventoryID === activeServer.inventoryID)
+    ) {
       setActiveServer(null);
     }
   }, [servers, activeServer]);
@@ -179,15 +218,20 @@ const Home: FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        alert(`Failed to add server: ${errorData.message || response.statusText}`);
+        alert(
+          `Failed to add server: ${errorData.message || response.statusText}`,
+        );
         return;
       }
 
       const newServer = await response.json();
       setActiveServer(newServer as DatabaseInventory);
       alert("Server added successfully!");
-    } catch (error: any) {
-      alert(`Error adding server: ${error.message || "An unknown error occurred."}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      alert(
+        `Error adding server: ${error.message || "An unknown error occurred."}`,
+      );
     } finally {
       await refreshServers();
       setModal({ type: null });
@@ -204,13 +248,18 @@ const Home: FC = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
-        alert(`Failed to update server: ${errorData.message || response.statusText}`);
+        alert(
+          `Failed to update server: ${errorData.message || response.statusText}`,
+        );
         return;
       }
 
       if (activeServer?.inventoryID === data.inventoryID) setActiveServer(data);
     } catch (error: unknown) {
-      alert(`Error updating server: ${error.message || "An unknown error occurred."}`);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      alert(
+        `Error updating server: ${error.message || "An unknown error occurred."}`,
+      );
     } finally {
       await refreshServers();
       setModal({ type: null });
@@ -220,15 +269,23 @@ const Home: FC = () => {
   const handleDeleteServer = async (id: string) => {
     if (window.confirm("Are you sure you want to delete this server?")) {
       try {
-        const response = await fetch(`/api/inventory/${id}`, { method: "DELETE" });
+        const response = await fetch(`/api/inventory/${id}`, {
+          method: "DELETE",
+        });
         if (!response.ok) {
           const errorData = await response.json();
-          alert(`Failed to delete server: ${errorData.message || response.statusText}`);
+          alert(
+            `Failed to delete server: ${errorData.message || response.statusText}`,
+          );
           return;
         }
         if (activeServer?.inventoryID === id) setActiveServer(null);
       } catch (error: unknown) {
-        alert(`Error deleting server: ${error.message || "An unknown error occurred."}`);
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        alert(
+          `Error deleting server: ${error.message || "An unknown error occurred."}`,
+        );
       } finally {
         await refreshServers();
       }
@@ -242,6 +299,7 @@ const Home: FC = () => {
         activeServer={activeServer}
         onSelectServer={setActiveServer}
       />
+
       <main className="flex-1 p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-6 text-white">
           {activeServer ? activeServer.systemName : "Database Inventory"}
@@ -255,27 +313,29 @@ const Home: FC = () => {
         )}
 
         {isInventoryLoading ? (
-          <p className="text-center py-20 text-slate-400">Loading Inventory...</p>
+          <p className="text-center py-20 text-slate-400">
+            Loading Inventory...
+          </p>
         ) : activeServer ? (
           <>
-           <ServerDetailView
-  server={activeServer}
-  metrics={mergedMetrics}
-  isLoading={isMetricsLoading}
-  error={metricsError}
-  onRefresh={async (tab) => {
-    if (tab === "performance") {
-      await Promise.all([refreshMetrics(), refreshServers()]);
-    } else if (tab === "insights") {
-      await refreshInsights();
-    } else if (tab === "hardware") {
-      await refreshHardware();
-    }
-  }}
-  insights={insights}
-  insightsLoading={insightLoading}
-  insightError={insightError}
-/>
+            <ServerDetailView
+              server={activeServer}
+              metrics={mergedMetrics}
+              isLoading={isMetricsLoading}
+              error={metricsError}
+              onRefresh={async (tab) => {
+                if (tab === "performance") {
+                  await Promise.all([refreshMetrics(), refreshServers()]);
+                } else if (tab === "insights") {
+                  await refreshInsights();
+                } else if (tab === "hardware") {
+                  await refreshHardware();
+                }
+              }}
+              insights={insights}
+              insightsLoading={insightLoading}
+              insightError={insightError}
+            />
 
             {metrics?.databases && (
               <DatabaseTableView
@@ -288,8 +348,12 @@ const Home: FC = () => {
           <ManagementPanel
             servers={servers}
             onOpenAddModal={() => setModal({ type: "add" })}
-            onOpenEditModal={(server) => setModal({ type: "edit", data: server })}
-            onOpenDetailModal={(server) => setModal({ type: "detail", data: server })}
+            onOpenEditModal={(server) =>
+              setModal({ type: "edit", data: server })
+            }
+            onOpenDetailModal={(server) =>
+              setModal({ type: "detail", data: server })
+            }
             onDelete={handleDeleteServer}
           />
         )}
@@ -300,12 +364,14 @@ const Home: FC = () => {
         onClose={() => setModal({ type: null })}
         onAdd={handleAddServer}
       />
+
       <EditDatabaseModal
         isOpen={modal.type === "edit"}
         server={modal.data}
         onClose={() => setModal({ type: null })}
         onEdit={handleEditServer}
       />
+
       <ServerDetailModal
         isOpen={modal.type === "detail"}
         server={modal.data}

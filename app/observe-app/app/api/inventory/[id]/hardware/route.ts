@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "mssql";
-import { queryAppDb as queryAppStaticDb } from '@/lib/appDb'; 
+import { queryAppDb as queryAppStaticDb } from "@/lib/appDb";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const resolvedParams = await params;  // ✅ Await params first
-  const { id } = resolvedParams;  
+  const resolvedParams = await params; // ✅ Await params first
+  const { id } = resolvedParams;
   let pool: sql.ConnectionPool | undefined;
 
   try {
-    // ขั้นตอนที่ 1: ดึงข้อมูล Config (ส่วนนี้ของคุณถูกต้องดีแล้ว)
     const result = await queryAppStaticDb(
       `SELECT 
           InventoryID as inventoryID, SystemName as systemName, ServerHost as serverHost, 
@@ -19,19 +18,19 @@ export async function GET(
           ConnectionUsername as connectionUsername, CredentialReference as credentialReference
         FROM IT_ManagementDB.dbo.databaseInventory
         WHERE inventoryID = @id`,
-      { id }
+      { id },
     );
     if (!result.recordset || result.recordset.length === 0) {
       return NextResponse.json(
         { error: "Server configuration not found." },
-        { status: 404 }
+        { status: 404 },
       );
     }
     const serverConfig = result.recordset[0];
     if (!serverConfig.credentialReference) {
       return NextResponse.json(
         { error: "Server connection password is not configured." },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -138,24 +137,25 @@ export async function GET(
       ram: {
         databaseMetrics: dbMetricsResult.recordset,
       },
-      performanceInsights: insightsResult.recordset.map(insight => ({
+      performanceInsights: insightsResult.recordset.map((insight) => ({
         ...insight,
         details: {
-            session_id: insight.session_id,
-            total_elapsed_time: insight.details_total_elapsed_time,
-            wait_type: insight.details_wait_type,
-            wait_time: insight.details_wait_time,
-            query: insight.query
-        }
-    }))
+          session_id: insight.session_id,
+          total_elapsed_time: insight.details_total_elapsed_time,
+          wait_type: insight.details_wait_type,
+          wait_time: insight.details_wait_time,
+          query: insight.query,
+        },
+      })),
     };
 
     return NextResponse.json(responseData);
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error(`[API Combined Metrics Error] for ID ${id}:`, error);
     return NextResponse.json(
       { error: "Failed to fetch combined metrics.", details: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   } finally {
     if (pool) {

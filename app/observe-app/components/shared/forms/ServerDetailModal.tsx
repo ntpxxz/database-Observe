@@ -37,14 +37,23 @@ export const ServerDetailModal: FC<ServerDetailModalProps> = ({
     return [
       { label: "Type", value: insight.type },
       { label: "Query", value: insight.query || fallback.query },
-      { label: "Session ID", value: insight.session_id || insight.spid || fallback.session_id },
+      {
+        label: "Session ID",
+        value: insight.session_id || insight.spid || fallback.session_id,
+      },
       { label: "Start Time", value: insight.start_time || insight.timestamp },
       { label: "Duration (ms)", value: insight.duration || fallback.duration },
       { label: "Count", value: insight.count || fallback.count },
       { label: "CPU Time", value: insight.cpu_time || fallback.cpu_time },
       { label: "Wait Type", value: insight.wait_type || fallback.wait_type },
-      { label: "Object Name", value: insight.object_name || fallback.object_name },
-      { label: "Database", value: insight.database_name || fallback.database_name },
+      {
+        label: "Object Name",
+        value: insight.object_name || fallback.object_name,
+      },
+      {
+        label: "Database",
+        value: insight.database_name || fallback.database_name,
+      },
       { label: "Message", value: insight.message || fallback.message },
     ].filter((item) => item.value !== undefined && item.value !== null);
   };
@@ -54,7 +63,9 @@ export const ServerDetailModal: FC<ServerDetailModalProps> = ({
       <div className="bg-slate-800 p-6 rounded-xl w-full max-w-lg border border-slate-700">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-semibold text-white">
-            {isInsightView ? "Insight Details" : `${server?.systemName} - Details`}
+            {isInsightView
+              ? "Insight Details"
+              : `${server?.systemName} - Details`}
           </h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
             <X size={20} />
@@ -64,7 +75,11 @@ export const ServerDetailModal: FC<ServerDetailModalProps> = ({
         {isInsightView ? (
           <div className="grid grid-cols-1 gap-4 text-sm text-white max-h-[70vh] overflow-y-auto">
             {getInsightDetails(insight).map((item) => (
-              <DetailItem key={item.label} label={item.label} value={item.value} />
+              <DetailItem
+                key={item.label}
+                label={item.label}
+                value={item.value}
+              />
             ))}
           </div>
         ) : (
@@ -76,7 +91,11 @@ export const ServerDetailModal: FC<ServerDetailModalProps> = ({
                 <DetailItem label="IP Address" value={server.serverHost} />
                 <DetailItem label="Port" value={server.port.toString()} />
                 <DetailItem label="Zone" value={server.zone} />
-                <DetailItem label="Username" value={server.connectionUsername} />
+                <DetailItem
+                  label="Username"
+                  value={server.connectionUsername}
+                />
+
                 <DetailItem label="Owner Contact" value={server.ownerContact} />
                 <DetailItem
                   label="Created Date"

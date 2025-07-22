@@ -1,23 +1,23 @@
-import sql from 'mssql';
-import { DatabaseInventory } from '@/types';
+import sql from "mssql";
+import { DatabaseInventory } from "@/types";
 
 const config: sql.config = {
-  user: process.env.MSSQL_USER || 'sa',
-  password: process.env.MSSQL_PASSWORD || '123456',
-  server: process.env.MSSQL_HOST || 'localhost',
-  database: process.env.MSSQL_DATABASE || 'IT_ManagementDB',
+  user: process.env.MSSQL_USER || "sa",
+  password: process.env.MSSQL_PASSWORD || "123456",
+  server: process.env.MSSQL_HOST || "localhost",
+  database: process.env.MSSQL_DATABASE || "IT_ManagementDB",
   options: {
     trustServerCertificate: true,
     encrypt: true,
-    enableArithAbort: true
+    enableArithAbort: true,
   },
   requestTimeout: 30000,
   connectionTimeout: 30000,
   pool: {
     max: 10,
     min: 0,
-    idleTimeoutMillis: 30000
-  }
+    idleTimeoutMillis: 30000,
+  },
 };
 
 declare global {
@@ -28,12 +28,12 @@ function getAppDbConnection(): Promise<sql.ConnectionPool> {
   if (!global.appDbPool) {
     global.appDbPool = new sql.ConnectionPool(config)
       .connect()
-      .then(pool => {
+      .then((pool) => {
         console.log("Connected to App DB");
-        pool.on("error", err => console.error("App DB Pool Error:", err));
+        pool.on("error", (err) => console.error("App DB Pool Error:", err));
         return pool;
       })
-      .catch(err => {
+      .catch((err) => {
         console.error("Failed to connect to App DB:", err);
         global.appDbPool = undefined;
         throw err;
@@ -44,7 +44,7 @@ function getAppDbConnection(): Promise<sql.ConnectionPool> {
 
 export async function queryAppDb(
   queryTemplate: string,
-  params: { [key: string]: any } = {}
+  params: { [key: string]: any } = {},
 ) {
   const pool = await getAppDbConnection();
   const request = pool.request();
@@ -68,7 +68,7 @@ export async function getInventoryById(id: string) {
       CredentialReference as credentialReference
     FROM IT_ManagementDB.dbo.DatabaseInventory
     WHERE InventoryID = @id`,
-    { id }
+    { id },
   );
 
   if (!result.recordset[0]) {
@@ -100,8 +100,8 @@ export async function updateInventoryById(id: string, data: DatabaseInventory) {
       databaseType: data.databaseType,
       connectionUsername: data.connectionUsername,
       credentialReference: data.credentialReference,
-      purposeNotes: data.purposeNotes || '',
-      ownerContact: data.ownerContact || ''
-    }
+      purposeNotes: data.purposeNotes || "",
+      ownerContact: data.ownerContact || "",
+    },
   );
 }

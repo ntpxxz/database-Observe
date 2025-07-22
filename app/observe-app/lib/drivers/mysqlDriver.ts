@@ -47,7 +47,8 @@ const mysqlDriver: IDriver = {
           byIo: ioRes[0] as PerformanceInsight[],
         },
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       console.error("MySQL metrics error:", err.message);
       return {
         performanceInsights: {
@@ -128,7 +129,8 @@ const mysqlDriver: IDriver = {
         indexUsage: indexRes[0],
         waitStats: [],
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       console.error("MySQL analysis error:", err.message);
       throw new Error(`Failed to get query analysis: ${err.message}`);
     }

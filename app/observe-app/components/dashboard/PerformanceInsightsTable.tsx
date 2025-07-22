@@ -32,7 +32,7 @@ interface PerformanceInsightsTableProps {
   isLoading?: boolean;
   onKillSession?: (sessionId: string) => Promise<void>;
   onExecuteQuery?: (query: string) => Promise<any>;
-  onAskAi?: (query: string) => Promise<void>; 
+  onAskAi?: (query: string) => Promise<void>;
 }
 
 type SortField = "type" | "query" | "duration" | "count" | "timestamp";
@@ -58,6 +58,7 @@ const InsightIcon: FC<{ type: string }> = ({ type }) => {
     long_running_query: (
       <Hourglass size={16} className="text-yellow-400 mr-2" />
     ),
+
     blocking_query: <Lock size={16} className="text-red-500 mr-2" />,
     deadlock_event: <Skull size={16} className="text-rose-500 mr-2" />,
     high_tempdb_usage: <Database size={16} className="text-cyan-400 mr-2" />,
@@ -80,7 +81,6 @@ const INSIGHT_TYPE_MAP: { [key: string]: string } = {
   running_query: "Running Query",
   error: "Error",
 };
-
 
 const truncateText = (text: string, maxLength: number): string =>
   !text || text.length <= maxLength
@@ -165,7 +165,7 @@ function getNumericValue(insight: any, key: string): number {
 // CSV Export function
 const exportToCSV = (
   insights: any[],
-  filename: string = "performance_insights.csv"
+  filename: string = "performance_insights.csv",
 ) => {
   const headers = [
     "Type",
@@ -220,7 +220,6 @@ const exportToCSV = (
   }
 };
 
-
 export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   insights,
   serverName,
@@ -238,8 +237,8 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   const [queryResult, setQueryResult] = useState<any>(null);
   const [isExecutingQuery, setIsExecutingQuery] = useState(false);
   const [killingSession, setKillingSession] = useState<string | null>(null);
-
-
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const ROWS_PER_PAGE = 10;
   const normalizedInsights = Array.isArray(insights) ? insights : [];
 
@@ -262,7 +261,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   // Get unique types for filter dropdown
   const availableTypes = useMemo(() => {
     const types = new Set(
-      normalizedInsights.map((insight) => insight.type || "query")
+      normalizedInsights.map((insight) => insight.type || "query"),
     );
     return Array.from(types);
   }, [normalizedInsights]);
@@ -325,10 +324,10 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
           break;
         case "timestamp":
           aValue = new Date(
-            a.timestamp || a.start_time || "1970-01-01"
+            a.timestamp || a.start_time || "1970-01-01",
           ).getTime();
           bValue = new Date(
-            b.timestamp || b.start_time || "1970-01-01"
+            b.timestamp || b.start_time || "1970-01-01",
           ).getTime();
           break;
         default:
@@ -383,6 +382,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     }
   };
 
+
   // Handle manual query execution
   const handleExecuteQuery = async () => {
     if (!onExecuteQuery || !manualQuery.trim()) return;
@@ -398,8 +398,23 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     }
   };
 
+  const handleAskAi = async (query: string) => {
+    setLoadingSuggestion(true);
+    try {
+      const res = await fetch("/api/sql-ai-optimize/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      const data = await res.json();
+      setAiSuggestion(data.suggestion);
+    } catch (error) {
+      setAiSuggestion("Failed to fetch suggestion.");
+    } finally {
+      setLoadingSuggestion(false);
+    }
+  };
 
-  
   // Render sort icon
   const renderSortIcon = (field: SortField) => {
     if (sortConfig.field !== field) {
@@ -448,12 +463,12 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   }
 
   const totalPages = Math.ceil(
-    filteredAndSortedInsights.length / ROWS_PER_PAGE
+    filteredAndSortedInsights.length / ROWS_PER_PAGE,
   );
   const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
   const currentInsights = filteredAndSortedInsights.slice(
     startIndex,
-    startIndex + ROWS_PER_PAGE
+    startIndex + ROWS_PER_PAGE,
   );
 
   return (
@@ -530,6 +545,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                   size={16}
                   className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
                 />
+
                 <input
                   type="text"
                   placeholder="Search in queries..."
@@ -729,18 +745,16 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                       : callCount}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">                      
-                      <button             
-                    
-                    
-                    onClick={() => {
-                      const extracted = extractQueryText(insight);
-                      console.log("Sending to AI:", extracted);
-                      onAskAi?.(extracted);
-                    }}                 
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => {
+                          const extracted = extractQueryText(insight);
+                          console.log("Sending to AI:", extracted);
+                          onAskAi?.(extracted);
+                        }}
                         className="text-xs text-green-500 hover:text-sky-200 font-medium py-1 px-2 rounded text-xs hover:bg-sky-500/10 transition-colors"
                       >
-                       <Bot />
+                        <Bot />
                       </button>
                       <button
                         onClick={() => {
@@ -785,7 +799,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
             Showing {startIndex + 1}-
             {Math.min(
               startIndex + ROWS_PER_PAGE,
-              filteredAndSortedInsights.length
+              filteredAndSortedInsights.length,
             )}{" "}
             of {filteredAndSortedInsights.length} insights
           </span>
@@ -818,10 +832,13 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
       {selectedInsight && (
         <InsightDetailModal
           insight={selectedInsight}
-          onClose={() => setSelectedInsight(null)}
+          onClose={() => setSelectedInsight(null)}     
+          onAskAi={handleAskAi}
+          aiSuggestion={aiSuggestion}
+          loadingSuggestion={loadingSuggestion}
         />
       )}
-
+      
     </div>
   );
 };

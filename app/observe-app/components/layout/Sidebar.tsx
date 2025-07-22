@@ -5,7 +5,6 @@ import {
   ChevronRight,
   LayoutDashboard,
   List,
-  
 } from "lucide-react";
 import { DatabaseInventory } from "@/types";
 
@@ -82,11 +81,10 @@ export const Sidebar: FC<SidebarProps> = ({
                       }`}
                     >
                       <span className="flex items-center">
-                        <ServerIcon className="mr-2" size={16} />                       
+                        <ServerIcon className="mr-2" size={16} />
                         {server.systemName}
-                      </span> 
+                      </span>
                     </button>
-                    
                   </div>
                 );
               })}

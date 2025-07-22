@@ -29,7 +29,7 @@ interface ServerDetailViewProps {
   insights?: any | null;
   insightsLoading?: boolean;
   insightError?: string | null;
-  onRefresh: (tab: "performance" |"insights"| "hardware") => void;
+  onRefresh: (tab: "performance" | "insights" | "hardware") => void;
 }
 
 interface DetailItemProps {
@@ -90,7 +90,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   insightError,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    "performance" | "insights" | "hardware"  
+    "performance" | "insights" | "hardware"
   >("performance");
 
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -98,7 +98,8 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState<string>("");
   const [aiSuggestion, setAiSuggestion] = useState<string>("");
-
+  const [loadingSuggestion, setLoadingSuggestion] = useState(false);
+  
   const serverStatus = useMemo(() => {
     if (!metrics?.kpi) return "unknown";
     const { cpu = 0, memory = 0 } = metrics.kpi;
@@ -111,7 +112,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     if (!metrics?.hardware?.ram?.databaseMetrics) return null;
     return metrics.hardware.ram.databaseMetrics.reduce(
       (sum, db) => sum + db.memory_in_buffer_mb,
-      0
+      0,
     );
   }, [metrics]);
 
@@ -132,33 +133,39 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     return { total, critical, warning };
   }, [insights]);
 
-  const handleRefresh = async (tab: "performance" | "insights" | "hardware") => {
+  const handleRefresh = async (
+    tab: "performance" | "insights" | "hardware",
+  ) => {
     try {
-      console.log ('The tab', tab)
+      console.log("The tab", tab);
       await onRefresh(activeTab);
       setLastRefresh(new Date());
     } catch (err) {
       console.error("Failed to refresh data:", err);
     }
   };
-  
+
   const handleKillSession = async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/inventory/${server?.InventoryID}/kill-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
-  
+      const res = await fetch(
+        `/api/inventory/${server?.InventoryID}/kill-session`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        },
+      );
+
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.message || "Kill session failed");
       }
-  
+
       const result = await res.json();
       toast.success(`✅ Session ${sessionId} killed successfully`);
       handleRefresh(tab); // Refresh insights after kill
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       toast.error(`❌ Failed to kill session ${sessionId}: ${err.message}`);
     }
   };
@@ -167,26 +174,28 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     if (!query || !server?.inventoryID) {
       toast.error("❌ Missing query or Inventory ID");
       return { error: "Missing query or inventoryId" };
-    }  
+    }
     if (!isReadOnlySQL(query)) {
-      toast.error("❌ Only single-statement read-only SELECT or safe EXEC queries are allowed.");
+      toast.error(
+        "❌ Only single-statement read-only SELECT or safe EXEC queries are allowed.",
+      );
       return { error: "Query validation failed on client." };
     }
-  
+
     try {
       const res = await fetch(`/api/execute-query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, inventoryId: server.inventoryID }),
       });
-  
+
       const result = await res.json();
-  
+
       if (!res.ok) {
         toast.error(`❌ ${result.message || "Query execution failed."}`);
         return { error: result.message };
       }
-  
+
       toast.success("✅ Query executed successfully!");
       return result;
     } catch (error) {
@@ -194,15 +203,13 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
       toast.error("Unexpected error occurred. See console for details.");
       return { error };
     }
-  };  
+  };
 
-
-  
   const handleAskAi = async (query: string) => {
     setIsModalOpen(true);
     setSelectedQuery(query);
     setAiSuggestion("Loading...");
-  
+
     try {
       const suggestion = await askAiForOptimization(query);
       setAiSuggestion(suggestion);
@@ -210,20 +217,34 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
       setAiSuggestion("❌ Failed to get suggestion.");
     }
   };
-   
+
   const flattenedInsights = useMemo(() => {
     if (!insights || typeof insights !== "object") return [];
-  
+
     return [
-      ...(insights.runningQueries ?? []).map(i => ({ ...i, type: 'running_query' })),
-      ...(insights.slowQueries ?? []).map(i => ({ ...i, type: 'slow_query' })),
-      ...(insights.blockingQueries ?? []).map(i => ({ ...i, type: 'blocking_query' })),
-      ...(insights.waitStats ?? []).map(i => ({ ...i, type: 'wait_stats' })),
-      ...(insights.deadlocks ?? []).map(i => ({ ...i, type: 'deadlock_event' })),
-      ...(insights.tempDbUsage ?? []).map(i => ({ ...i, type: 'high_tempdb_usage' })),
+      ...(insights.runningQueries ?? []).map((i) => ({
+        ...i,
+        type: "running_query",
+      })),
+      ...(insights.slowQueries ?? []).map((i) => ({
+        ...i,
+        type: "slow_query",
+      })),
+      ...(insights.blockingQueries ?? []).map((i) => ({
+        ...i,
+        type: "blocking_query",
+      })),
+      ...(insights.waitStats ?? []).map((i) => ({ ...i, type: "wait_stats" })),
+      ...(insights.deadlocks ?? []).map((i) => ({
+        ...i,
+        type: "deadlock_event",
+      })),
+      ...(insights.tempDbUsage ?? []).map((i) => ({
+        ...i,
+        type: "high_tempdb_usage",
+      })),
     ];
   }, [insights]);
-  
 
   if (isLoading) return <LoadingSkeleton />;
   if (error) return <ErrorDisplay error={error} onRetry={handleRefresh} />;
@@ -233,7 +254,6 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
         No metrics available for this server.
       </div>
     );
-
 
   return (
     <div className="space-y-8">
@@ -282,17 +302,16 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
             </button>
 
             {/**<button
-              onClick={() => setActiveTab("trends")}
-              className={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "trends"
-                  ? "border-sky-500 text-sky-400"
-                  : "border-transparent text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              <TrendingUp size={16} className="inline mr-2" />
-              Trends
-            </button>**/}
-
+                onClick={() => setActiveTab("trends")}
+                className={`whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === "trends"
+                    ? "border-sky-500 text-sky-400"
+                    : "border-transparent text-slate-500 hover:text-slate-300"
+                }`}
+               >
+                <TrendingUp size={16} className="inline mr-2" />
+                Trends
+               </button>**/}
           </nav>
           <nav className="flex items-center gap-4">
             <span className="text-xs text-slate-400 flex items-center gap-1">
@@ -300,7 +319,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
               Last updated: {lastRefresh.toLocaleTimeString()}
             </span>
             <button
-              onClick= {()=> handleRefresh(activeTab)}
+              onClick={() => handleRefresh(activeTab)}
               disabled={isLoading}
               className="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
               title="Refresh data"
@@ -338,6 +357,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                 unit="%"
                 color="sky"
               />
+
               <KPIWidget
                 icon={<MemoryStick size={24} />}
                 title="Memory in Buffer"
@@ -347,6 +367,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                 unit="MB"
                 color="violet"
               />
+
               <KPIWidget
                 icon={<ShieldCheck size={24} />}
                 title="Cache Hit Rate"
@@ -358,6 +379,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                 unit="%"
                 color="green"
               />
+
               <KPIWidget
                 icon={<Activity size={24} />}
                 title="Active Connections"
@@ -381,47 +403,53 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
         </div>
       )}
 
-{activeTab === "insights" && (
-  <div className="space-y-6">
-    {insightsLoading ? (
-      <div className="text-center py-20">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto"></div>
-        <p className="text-slate-400 mt-4">Loading query insights...</p>
-      </div>
-    ) : insightError ? (
-      <ErrorDisplay error={insightError} onRetry={handleRefresh} />
-    ) : (
-      <div className="space-y-6">
-        {flattenedInsights.length > 0 ? (
-          <section className="bg-slate-900 p-6 rounded-xl border border-slate-800">
-            <h3 className="text-xl font-semibold mb-4 text-white flex items-center">
-              <Activity size={20} className="mr-2 text-sky-400" />
-              Performance Insights ({flattenedInsights.length})
-            </h3>
-            
-            <PerformanceInsightsTable
-              insights={flattenedInsights}
-              serverName={server?.systemName}
-              isLoading={insightsLoading}
-              onKillSession={handleKillSession}
-              onExecuteQuery={handleExecuteManualQuery}
-              onAskAi={handleAskAi}
-            />
-          </section>
-        ) : (
-          <div className="text-center py-20">
-            <ShieldCheck size={48} className="mx-auto text-green-400 mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">All Clear!</h3>
-            <p className="text-slate-400">
-              No significant performance issues found. System looks healthy!
-            </p>
-          </div>
-        )}
-      </div>
-    )}
-  </div>
-)}
+      {activeTab === "insights" && (
+        <div className="space-y-6">
+          {insightsLoading ? (
+            <div className="text-center py-20">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto"></div>
+              <p className="text-slate-400 mt-4">Loading query insights...</p>
+            </div>
+          ) : insightError ? (
+            <ErrorDisplay error={insightError} onRetry={handleRefresh} />
+          ) : (
+            <div className="space-y-6">
+              {flattenedInsights.length > 0 ? (
+                <section className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+                  <h3 className="text-xl font-semibold mb-4 text-white flex items-center">
+                    <Activity size={20} className="mr-2 text-sky-400" />
+                    Performance Insights ({flattenedInsights.length})
+                  </h3>
 
+                  <PerformanceInsightsTable
+                    insights={flattenedInsights}
+                    serverName={server?.systemName}
+                    isLoading={insightsLoading}
+                    onKillSession={handleKillSession}
+                    onExecuteQuery={handleExecuteManualQuery}
+                    onAskAi={handleAskAi}
+                  />
+                </section>
+              ) : (
+                <div className="text-center py-20">
+                  <ShieldCheck
+                    size={48}
+                    className="mx-auto text-green-400 mb-4"
+                  />
+
+                  <h3 className="text-lg font-medium text-white mb-2">
+                    All Clear!
+                  </h3>
+                  <p className="text-slate-400">
+                    No significant performance issues found. System looks
+                    healthy!
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === "hardware" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -435,6 +463,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                 value={server.systemName}
                 isHighlight
               />
+
               <DetailItem label="Zone" value={server.zone} />
               <DetailItem label="IP Address" value={server.serverHost} />
               <DetailItem label="Port" value={server.port} />
@@ -443,6 +472,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                 label="Connection Username"
                 value={server.connectionUsername}
               />
+
               <DetailItem label="Owner Contact" value={server.ownerContact} />
             </dl>
           </div>
@@ -460,6 +490,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                     : null
                 }
               />
+
               <DetailItem
                 label="Memory Usage"
                 value={
@@ -468,10 +499,12 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
                     : null
                 }
               />
+
               <DetailItem
                 label="Disk I/O"
                 value={metrics.hardware.kpi?.disk_iops}
               />
+
               <DetailItem
                 label="Active Connections"
                 value={metrics.kpi?.connections}
@@ -494,19 +527,17 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
       )}
 
       {/**{activeTab === "trends" && (
-       <div className="space-y-8">
-          <QueryTrendChart serverId={server.id} />
-          <DiskUsageChart serverId={server.id} />
-        </div>
-      )}**/}
+         <div className="space-y-8">
+            <QueryTrendChart serverId={server.id} />
+            <DiskUsageChart serverId={server.id} />
+          </div>
+         )}**/}
       <SQLTuningModal
-  isOpen={isModalOpen}
-  query={selectedQuery}
-  suggestion={aiSuggestion}
-  onClose={() => setIsModalOpen(false)}
-/>
-
-
+        isOpen={isModalOpen}
+        query={selectedQuery}
+        suggestion={aiSuggestion}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   );
 };

@@ -6,7 +6,9 @@ import { DatabaseInventory } from "@/types";
  * @param id inventory ID
  * @returns DatabaseInventory object (เช่น host, port, user, password, dbName)
  */
-export async function getInventoryById(id: string): Promise<DatabaseInventory | null> {
+export async function getInventoryById(
+  id: string,
+): Promise<DatabaseInventory | null> {
   const query = `
     SELECT TOP 1 *
     FROM Inventory
@@ -19,7 +21,6 @@ export async function getInventoryById(id: string): Promise<DatabaseInventory | 
 
   const row = result.recordset[0];
 
-  
   return {
     id: row.id,
     serverHost: row.serverHost,

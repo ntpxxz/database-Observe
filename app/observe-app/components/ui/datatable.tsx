@@ -22,17 +22,25 @@ interface DataTableProps {
   onKillSession?: (sessionId: string) => Promise<void>;
 }
 
-export const DataTable: React.FC<DataTableProps> = ({ data, onKillSession }) => {
+export const DataTable: React.FC<DataTableProps> = ({
+  data,
+  onKillSession,
+}) => {
   const columns: ColumnDef<PerformanceInsight>[] = [
     {
       accessorKey: "type",
       header: "Type",
-      cell: info => info.getValue(),
+      cell: (info) => info.getValue(),
     },
     {
-      accessorFn: row => row.query_text || row.query || row.sql_text || row.details?.query_text || "[N/A]",
+      accessorFn: (row) =>
+        row.query_text ||
+        row.query ||
+        row.sql_text ||
+        row.details?.query_text ||
+        "[N/A]",
       header: "Query",
-      cell: info => (
+      cell: (info) => (
         <div className="truncate max-w-[400px] font-mono text-xs text-slate-300">
           {info.getValue()}
         </div>
@@ -40,19 +48,19 @@ export const DataTable: React.FC<DataTableProps> = ({ data, onKillSession }) => 
     },
     {
       header: "Duration (ms)",
-      accessorFn: row =>
+      accessorFn: (row) =>
         row.mean_exec_time_ms ??
         row.total_elapsed_time ??
         row.duration_ms ??
         row.duration ??
         0,
-      cell: info => info.getValue(),
-      sortingFn: 'basic',
+      cell: (info) => info.getValue(),
+      sortingFn: "basic",
     },
     {
       header: "Calls",
-      accessorFn: row => row.execution_count ?? row.calls ?? "-",
-      cell: info => info.getValue(),
+      accessorFn: (row) => row.execution_count ?? row.calls ?? "-",
+      cell: (info) => info.getValue(),
     },
     {
       id: "actions",
@@ -85,15 +93,18 @@ export const DataTable: React.FC<DataTableProps> = ({ data, onKillSession }) => 
   return (
     <Table>
       <TableHeader>
-        {table.getHeaderGroups().map(headerGroup => (
+        {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
-            {headerGroup.headers.map(header => (
+            {headerGroup.headers.map((header) => (
               <TableHead
                 key={header.id}
                 onClick={header.column.getToggleSortingHandler()}
                 className="cursor-pointer"
               >
-                {flexRender(header.column.columnDef.header, header.getContext())}
+                {flexRender(
+                  header.column.columnDef.header,
+                  header.getContext(),
+                )}
                 {header.column.getIsSorted() === "asc" && " ⬆️"}
                 {header.column.getIsSorted() === "desc" && " ⬇️"}
               </TableHead>
@@ -102,9 +113,9 @@ export const DataTable: React.FC<DataTableProps> = ({ data, onKillSession }) => 
         ))}
       </TableHeader>
       <TableBody>
-        {table.getRowModel().rows.map(row => (
+        {table.getRowModel().rows.map((row) => (
           <TableRow key={row.id}>
-            {row.getVisibleCells().map(cell => (
+            {row.getVisibleCells().map((cell) => (
               <TableCell key={cell.id}>
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </TableCell>

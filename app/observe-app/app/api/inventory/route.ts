@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
-import { Driver } from '@/types';
-import { queryAppDb as queryAppStaticDb } from '@/lib/appDb'; 
-import mssqlDriver from '@/lib/drivers/mssqlDriver';
-import mysqlDriver from '@/lib/drivers/mysqlDriver';
-import postgresDriver from '@/lib/drivers/postgresDriver';
+import { NextResponse } from "next/server";
+import { Driver } from "@/types";
+import { queryAppDb as queryAppStaticDb } from "@/lib/appDb";
+import mssqlDriver from "@/lib/drivers/mssqlDriver";
+import mysqlDriver from "@/lib/drivers/mysqlDriver";
+import postgresDriver from "@/lib/drivers/postgresDriver";
 
 const drivers: { [key: string]: Driver } = {
   MSSQL: mssqlDriver,
@@ -29,35 +29,42 @@ export async function GET() {
 
     const rawServers = result.recordset;
 
-    const enrichedServers = await Promise.all(rawServers.map(async (server) => {
-      const dbType = (server.databaseType || '').toUpperCase();
-      const driver = drivers[dbType];
+    const enrichedServers = await Promise.all(
+      rawServers.map(async (server) => {
+        const dbType = (server.databaseType || "").toUpperCase();
+        const driver = drivers[dbType];
 
-      if (!driver || !driver.getDatabases) {
-        console.warn(`❌ Unsupported driver or missing getDatabases for: ${dbType}`);
-        return { ...server, databases: [] };
-      }
+        if (!driver || !driver.getDatabases) {
+          console.warn(
+            `❌ Unsupported driver or missing getDatabases for: ${dbType}`,
+          );
+          return { ...server, databases: [] };
+        }
 
-      const connectionConfig = {
-        id: server.id,
-        serverHost: server.serverHost,
-        port: server.port,
-        connectionUsername: server.connectionUsername,
-        credentialReference: server.credentialReference,
-        systemName: server.databaseName || 'master',
-        databaseName: server.databaseName || 'master',
-      };
+        const connectionConfig = {
+          id: server.id,
+          serverHost: server.serverHost,
+          port: server.port,
+          connectionUsername: server.connectionUsername,
+          credentialReference: server.credentialReference,
+          systemName: server.databaseName || "master",
+          databaseName: server.databaseName || "master",
+        };
 
-      try {
-        const pool = await driver.connect(connectionConfig);
-        const databases = await driver.getDatabases(pool);
-        await driver.disconnect(pool);
-        return { ...server, databases };
-      } catch (e: any) {
-        console.error(`⚠️ Failed to fetch databases for ${server.systemName}:`, e.message);
-        return { ...server, databases: [] };
-      }
-    }));
+        try {
+          const pool = await driver.connect(connectionConfig);
+          const databases = await driver.getDatabases(pool);
+          await driver.disconnect(pool);
+          return { ...server, databases };
+        } catch (e: any) {
+          console.error(
+            `⚠️ Failed to fetch databases for ${server.systemName}:`,
+            e.message,
+          );
+          return { ...server, databases: [] };
+        }
+      }),
+    );
 
     const groupedByZone: Record<string, any[]> = {};
     for (const srv of enrichedServers) {
@@ -68,12 +75,12 @@ export async function GET() {
     }
 
     return NextResponse.json({ zones: groupedByZone });
-
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[API GET /inventory] Internal Error:", error.message);
     return NextResponse.json(
       { message: `Server Error: ${error.message}` },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -81,13 +88,29 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    if (!body.systemName || !body.serverHost || !body.port || !body.databaseType || !body.connectionUsername || !body.credentialReference) {
-      return NextResponse.json({ success: false, message: 'Missing required fields.' }, { status: 400 });
+    if (
+      !body.systemName ||
+      !body.serverHost ||
+      !body.port ||
+      !body.databaseType ||
+      !body.connectionUsername ||
+      !body.credentialReference
+    ) {
+      return NextResponse.json(
+        { success: false, message: "Missing required fields." },
+        { status: 400 },
+      );
     }
 
     const driver = drivers[body.databaseType.toUpperCase()];
     if (!driver) {
-      return NextResponse.json({ success: false, message: `Unsupported DB type: ${body.databaseType}` }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Unsupported DB type: ${body.databaseType}`,
+        },
+        { status: 400 },
+      );
     }
 
     const connectionConfig = {
@@ -95,8 +118,8 @@ export async function POST(request: Request) {
       connectionUsername: body.connectionUsername,
       credentialReference: body.credentialReference,
       port: body.port,
-      databaseName: body.databaseName || 'master',
-      systemName: body.databaseName || 'master',
+      databaseName: body.databaseName || "master",
+      systemName: body.databaseName || "master",
     };
 
     const pool = await driver.connect(connectionConfig);
@@ -112,17 +135,20 @@ export async function POST(request: Request) {
       systemName: body.systemName,
       serverHost: body.serverHost,
       port: body.port,
-      zone: body.zone || '',
+      zone: body.zone || "",
       databaseType: body.databaseType.toUpperCase(),
       connectionUsername: body.connectionUsername,
       credentialReference: body.credentialReference,
-      databaseName: body.databaseName || 'master',
+      databaseName: body.databaseName || "master",
     });
 
     return NextResponse.json({ success: true });
-
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[API POST /inventory]", error.message);
-    return NextResponse.json({ message: `Server Error: ${error.message}` }, { status: 500 });
+    return NextResponse.json(
+      { message: `Server Error: ${error.message}` },
+      { status: 500 },
+    );
   }
 }

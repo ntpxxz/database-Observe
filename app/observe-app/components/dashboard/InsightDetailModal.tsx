@@ -1,11 +1,22 @@
-'use client'
+"use client";
 import React, { FC, useState } from "react";
 import { PerformanceInsight } from "@/types";
-import { X, Cpu, Clock, User, Clipboard, ClipboardCheck, Bot } from "lucide-react";
-import { SQLTuningModal } from "../modals/SQLTuningModal";
+import {
+  X,
+  Cpu,
+  Clock,
+  User,
+  Clipboard,
+  ClipboardCheck,
+  Bot,
+} from "lucide-react";
+
 interface InsightDetailModalProps {
   insight: PerformanceInsight | null;
   onClose: () => void;
+  onAskAi?: (query: string) => Promise<void>;
+  aiSuggestion?: string | null;
+  loadingSuggestion?: boolean;
 }
 
 const DetailItem: FC<{ label: string; value: React.ReactNode }> = ({
@@ -26,6 +37,9 @@ const DetailItem: FC<{ label: string; value: React.ReactNode }> = ({
 export const InsightDetailModal: FC<InsightDetailModalProps> = ({
   insight,
   onClose,
+  onAskAi,
+  aiSuggestion,
+  loadingSuggestion,
 }) => {
   const [copied, setCopied] = useState(false);
 
@@ -60,10 +74,12 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
       alert("Failed to copy query.");
     }
   };
-  
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [showSQLTuningModal, setShowSQLTuningModal] = useState(false);
 
+  const handleAskAiClick = async () => {
+    if (!fullQuery || fullQuery === "No query text available.") return;
+    console.log("Sending to AI:", fullQuery);
+    await onAskAi?.(fullQuery);
+  };
 
   return (
     <div
@@ -170,6 +186,23 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
             </pre>
           </section>
 
+          {/* AI SQL Suggestion */}
+          <section className="mt-6">
+            <div className="flex items-center gap-2 mb-2 text-emerald-400">
+              <Bot size={16} />
+              <h3 className="text-sm font-semibold uppercase tracking-wider">
+               Suggestion
+              </h3>
+            </div>
+            {loadingSuggestion ? (
+              <p className="text-sm text-slate-400">Generating suggestion...</p>
+            ) : (
+              <pre className="bg-slate-900/70 p-4 rounded-md text-sm text-green-300 font-mono overflow-x-auto border border-slate-700">
+                <code>{aiSuggestion || "No suggestion yet."}</code>
+              </pre>
+            )}
+          </section>
+
           {/* Blocked Query (Deadlock) */}
           {details.query_2 && (
             <section>
@@ -186,11 +219,11 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
         {/* Footer */}
         <div className="p-6 border-t border-slate-700 flex justify-between">
           <button
-            onClick={() => {setShowSQLTuningModal(true)}}
+            onClick={handleAskAiClick}
             
             className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-md"
           >
-           <Bot/> 
+            <Bot />
           </button>
           <button
             onClick={onClose}
@@ -200,17 +233,6 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
           </button>
         </div>
       </div>
-      
-      {showSQLTuningModal && (
-    <SQLTuningModal
-          query={fullQuery}
-          onClose={() => setShowSQLTuningModal(false)} isOpen={true} suggestion={null}    />
-  )}
-    
-      
-    </div>    
+    </div>
   );
- 
-  
-  
 };

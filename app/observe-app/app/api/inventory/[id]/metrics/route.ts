@@ -11,7 +11,7 @@ import {
 import mssqlDriver from "@/lib/drivers/mssqlDriver";
 import postgresDriver from "@/lib/drivers/postgresDriver";
 import mysqlDriver from "@/lib/drivers/mysqlDriver";
-import { queryAppDb as queryAppStaticDb } from '@/lib/appDb'; 
+import { queryAppDb as queryAppStaticDb } from "@/lib/appDb";
 
 const drivers: { [key: string]: Driver } = {
   MSSQL: mssqlDriver,
@@ -22,13 +22,10 @@ const drivers: { [key: string]: Driver } = {
 const VALID_ANALYSIS_LEVELS = ["basic", "detailed", "full"] as const;
 type AnalysisLevel = (typeof VALID_ANALYSIS_LEVELS)[number];
 
-/**
- * [REFACTORED] ฟังก์ชันหลักที่จัดการ Logic การดึงข้อมูลตาม analysisLevel
- */
 async function processRequest(
   level: AnalysisLevel,
   driver: Driver,
-  pool: AnyPool
+  pool: AnyPool,
 ): Promise<
   Partial<Metrics> | QueryAnalysis | (QueryAnalysis & OptimizationSuggestions)
 > {
@@ -48,7 +45,7 @@ async function processRequest(
         return await driver.getQueryAnalysis(pool);
       }
       throw new Error(
-        `'detailed' analysis is not implemented for this driver.`
+        `'detailed' analysis is not implemented for this driver.`,
       );
 
     case "basic":
@@ -65,10 +62,10 @@ async function processRequest(
  */
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const startTime = Date.now();
-  const params = await context.params;  // ✅ Await params first
+  const params = await context.params; // ✅ Await params first
   const { id } = params || { id: request.nextUrl.searchParams.get("id") || "" };
 
   let targetPool: AnyPool | undefined;
@@ -81,13 +78,13 @@ export async function GET(
     if (!VALID_ANALYSIS_LEVELS.includes(levelParam as AnalysisLevel)) {
       return NextResponse.json(
         { error: `Invalid analysis level.` },
-        { status: 400 }
+        { status: 400 },
       );
     }
     const analysisLevel = levelParam as AnalysisLevel;
 
     console.log(
-      `[API Route] Processing request - ID: ${id}, Level: ${analysisLevel}`
+      `[API Route] Processing request - ID: ${id}, Level: ${analysisLevel}`,
     );
 
     // --- 2. Fetch Config & Select Driver ---
@@ -98,12 +95,12 @@ export async function GET(
                 ConnectionUsername as connectionUsername, CredentialReference as credentialReference
               FROM IT_ManagementDB.dbo.DatabaseInventory
               WHERE inventoryID = @id`,
-      { id }
+      { id },
     );
     if (result.recordset.length === 0) {
       return NextResponse.json(
         { message: `Server config with ID '${id}' not found.` },
-        { status: 404 }
+        { status: 404 },
       );
     }
     const raw = result.recordset[0];
@@ -119,7 +116,7 @@ export async function GET(
     if (!driver) {
       return NextResponse.json(
         { message: `Unsupported DB type: ${serverConfig.databaseType}` },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -132,7 +129,7 @@ export async function GET(
 
     const duration = Date.now() - startTime;
     console.log(
-      `[API Route] Request completed successfully - ID: ${id}, Duration: ${duration}ms`
+      `[API Route] Request completed successfully - ID: ${id}, Duration: ${duration}ms`,
     );
 
     // --- 5. Return Success Response ---
@@ -144,20 +141,20 @@ export async function GET(
         duration,
         timestamp: new Date().toISOString(),
       },
-      
     });
   } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
     const duration = Date.now() - startTime;
     console.error(
       `[API Route] CRITICAL ERROR - ID: ${id}, Duration: ${duration}ms`,
-      err
+      err,
     );
     return NextResponse.json(
       {
         error: `Internal server error: ${err.message}`,
         code: "INTERNAL_ERROR",
       },
-      { status: 500 }
+      { status: 500 },
     );
   } finally {
     // --- 6. Cleanup ---
@@ -168,7 +165,7 @@ export async function GET(
       } catch (cleanupError) {
         console.error(
           `[API Route] Driver cleanup failed for ID: ${id}:`,
-          cleanupError
+          cleanupError,
         );
       }
     }

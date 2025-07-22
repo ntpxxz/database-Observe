@@ -21,7 +21,7 @@ function tagWithType(data: any[] | undefined, type: string): any[] {
 
 export async function GET(
   request: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> },
 ) {
   const { id } = await context.params;
   console.log("🚀 [QueryInsight API] Called with ID:", id);
@@ -30,12 +30,15 @@ export async function GET(
     // 1. Lookup database config by inventory ID
     const result = await queryStaticAppDb(
       `SELECT * FROM IT_ManagementDB.dbo.DatabaseInventory WHERE InventoryID = @id`,
-      { id }
+      { id },
     );
 
     if (result.recordset.length === 0) {
       console.warn("❌ No database found for ID:", id);
-      return NextResponse.json({ message: "Database not found" }, { status: 404 });
+      return NextResponse.json(
+        { message: "Database not found" },
+        { status: 404 },
+      );
     }
 
     const db = result.recordset[0];
@@ -46,9 +49,12 @@ export async function GET(
     console.log("🔧 DB Type:", dbType, "| Driver found:", !!driver);
 
     if (!driver || !driver.getQueryAnalysis) {
-      return NextResponse.json({
-        message: `Driver not supported or getQueryAnalysis not implemented for: ${dbType}`,
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          message: `Driver not supported or getQueryAnalysis not implemented for: ${dbType}`,
+        },
+        { status: 400 },
+      );
     }
 
     // 2. Connect and analyze
@@ -62,12 +68,15 @@ export async function GET(
     const finalInsights = {
       runningQueries: tagWithType(rawInsights.runningQueries, "running_query"),
       slowQueries: tagWithType(rawInsights.slowQueries, "slow_query"),
-      blockingQueries: tagWithType(rawInsights.blockingQueries, "blocking_query"),
+      blockingQueries: tagWithType(
+        rawInsights.blockingQueries,
+        "blocking_query",
+      ),
       waitStats: tagWithType(rawInsights.waitStats, "wait_stats"),
       deadlocks: tagWithType(rawInsights.deadlocks, "deadlock_event"),
       tempDbUsage: tagWithType(
         rawInsights.tempDbUsage || rawInsights.tempdbUsage,
-        "high_tempdb_usage"
+        "high_tempdb_usage",
       ),
     };
 
@@ -79,10 +88,11 @@ export async function GET(
     // 5. Send result to frontend
     return NextResponse.json(finalInsights);
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("❌ Error in /query-insight route:", error.message);
     return NextResponse.json(
       { message: "Failed to load query insights", error: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

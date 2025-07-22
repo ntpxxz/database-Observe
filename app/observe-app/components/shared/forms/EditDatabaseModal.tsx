@@ -53,7 +53,7 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    >,
   ) => {
     const { name, value } = e.target;
     if (!formData) return;
@@ -93,29 +93,29 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
     try {
       const response = await fetch(
         `/api/connections/test?host=${encodeURIComponent(
-          formData.serverHost
+          formData.serverHost,
         )}&port=${formData.port}&user=${encodeURIComponent(
-          formData.connectionUsername
-        )}&pass=${encodeURIComponent(
-          formData.credentialReference
-        )}`
-      , {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          serverHost,
-          port,
-          databaseType,
-          connectionUsername,
-          credentialReference,
-        }),
-      });
+          formData.connectionUsername,
+        )}&pass=${encodeURIComponent(formData.credentialReference)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            serverHost,
+            port,
+            databaseType,
+            connectionUsername,
+            credentialReference,
+          }),
+        },
+      );
 
       const result = await response.json();
       if (!response.ok)
         throw new Error(result.message || "Connection test failed");
       setTestResult(result);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       setTestResult({
         success: false,
         message: error.message || "เกิดข้อผิดพลาด",
@@ -145,7 +145,8 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
 
       await onEdit(dataToSubmit);
       onClose();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Unknown error";
       alert(`เกิดข้อผิดพลาด: ${err.message}`);
     } finally {
       setIsSubmitting(false);
@@ -184,9 +185,7 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-slate-300">
-              IP Address
-              </label>
+              <label className="block text-sm text-slate-300">IP Address</label>
               <input
                 name="serverHost"
                 value={formData.serverHost ?? ""}

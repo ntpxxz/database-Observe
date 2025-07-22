@@ -1,5 +1,5 @@
-import sql, { ConnectionPool, config as SQLConfig } from 'mssql';
-import { DatabaseInventory } from '@/types';
+import sql, { ConnectionPool, config as SQLConfig } from "mssql";
+import { DatabaseInventory } from "@/types";
 
 const poolMap: Map<string, ConnectionPool> = new Map();
 
@@ -7,27 +7,27 @@ function buildSqlConfig(db: DatabaseInventory): SQLConfig {
   return {
     user: db.connectionUsername,
     password: db.credentialReference,
-    server: db.serverHost|| 'localhost',
-    database: 'master',
+    server: db.serverHost || "localhost",
+    database: "master",
     port: db.port || 1433,
     options: {
       trustServerCertificate: true,
       encrypt: false,
-      enableArithAbort: true
+      enableArithAbort: true,
     },
     requestTimeout: 30000,
     connectionTimeout: 30000,
     pool: {
       max: 10,
       min: 0,
-      idleTimeoutMillis: 30000
-    }
+      idleTimeoutMillis: 30000,
+    },
   };
 }
 
-
-
-export async function getSQLConnectionByInventory(db: DatabaseInventory): Promise<ConnectionPool> {
+export async function getSQLConnectionByInventory(
+  db: DatabaseInventory,
+): Promise<ConnectionPool> {
   const key = db.inventoryID || `${db.serverHost}:${db.systemName}`;
   const existingPool = poolMap.get(key);
   if (existingPool && existingPool.connected) return existingPool;
@@ -37,7 +37,7 @@ export async function getSQLConnectionByInventory(db: DatabaseInventory): Promis
 
   try {
     await newPool.connect();
-    newPool.on('error', err => {
+    newPool.on("error", (err) => {
       console.error(`MSSQL pool error for ${key}:`, err);
       poolMap.delete(key);
     });
@@ -52,7 +52,7 @@ export async function getSQLConnectionByInventory(db: DatabaseInventory): Promis
 export async function queryAppDb(
   db: DatabaseInventory,
   queryTemplate: string,
-  params: { [key: string]: unknown } = {}
+  params: { [key: string]: any } = {},
 ) {
   const pool = await getSQLConnectionByInventory(db);
   const request = pool.request();

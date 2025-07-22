@@ -8,18 +8,23 @@ export async function POST(req: NextRequest) {
     const { inventoryId, query } = await req.json();
 
     if (!query || !inventoryId) {
-      return NextResponse.json({ message: "Missing query or inventoryId" }, { status: 400 });
+      return NextResponse.json(
+        { message: "Missing query or inventoryId" },
+        { status: 400 },
+      );
     }
 
     const result = await queryAppDb(
       `SELECT * FROM IT_ManagementDB.dbo.DatabaseInventory WHERE InventoryID = @id`,
-      { id: inventoryId }
+      { id: inventoryId },
     );
 
     if (!result.recordset.length) {
-      return NextResponse.json({ message: "Invalid inventoryId" }, { status: 404 });
+      return NextResponse.json(
+        { message: "Invalid inventoryId" },
+        { status: 404 },
+      );
     }
-
 
     const dbConfig = result.recordset[0];
 
@@ -29,12 +34,15 @@ export async function POST(req: NextRequest) {
     const driver = mssqlDriver; // หรือ dynamic ได้ตาม dbConfig.databaseType
     const response = await driver.executeQuery(pool, query);
     if (!isReadOnlySQL(query)) {
-      return NextResponse.json({ message: "Only read-only queries are allowed." }, { status: 403 });
+      return NextResponse.json(
+        { message: "Only read-only queries are allowed." },
+        { status: 403 },
+      );
     }
     console.log("✅ Query succeeded:", response);
     return NextResponse.json({ result: response });
-    
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[Manual Query Error]", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
