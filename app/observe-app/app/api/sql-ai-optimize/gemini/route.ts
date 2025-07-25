@@ -27,10 +27,10 @@ ${query}
     const response = result.response.text();
 
     return NextResponse.json({ suggestion: response.trim() });
-  } catch (err: unknown) {
-    console.error('Gemini Agent Error:', err);
+  } catch (error: unknown) {
+    console.error('Gemini Agent Error:', error);
     return NextResponse.json(
-      { error: err.message || 'Unknown error' },
+      { datails: error|| 'Unknown error' },
       { status: 500 }
     );
   }

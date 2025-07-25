@@ -42,8 +42,7 @@ export async function POST(req: NextRequest) {
     console.log("✅ Query succeeded:", response);
     return NextResponse.json({ result: response });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[Manual Query Error]", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error }, { status: 500 });
   }
 }

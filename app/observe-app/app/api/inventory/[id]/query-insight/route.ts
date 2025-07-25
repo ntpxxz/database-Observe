@@ -4,16 +4,28 @@ import { getSQLConnectionByInventory } from "@/lib/connectionManager";
 import mssqlDriver from "@/lib/drivers/mssqlDriver";
 import mysqlDriver from "@/lib/drivers/mysqlDriver";
 import postgresDriver from "@/lib/drivers/postgresDriver";
-import { Driver } from "@/types";
+import { ConnectionPool as MSSQLConnectionPool } from "mssql"; // Import actual MSSQL ConnectionPool
+import { Pool as PgNativePool } from "pg"; // Import actual PostgreSQL Pool
+import { Pool as MySQLNativePool } from "mysql2/promise"; // Import actual MySQL Pool from mysql2/promise
 
-// Supported drivers map
-const drivers: Record<string, Driver> = {
+import {
+  DriverMap,
+  MSSQLPool,
+  MySQLPool, 
+  PostgreSQLPool, 
+  BaseDriver,
+  MSSQLConnectionConfig,
+  MySQLConnectionConfig,
+  PostgreSQLConnectionConfig,
+  QueryAnalysis,
+} from "@/types";
+
+const drivers: DriverMap = {
   MSSQL: mssqlDriver,
-  MYSQL: mysqlDriver,
   POSTGRES: postgresDriver,
+  MYSQL: mysqlDriver,
 };
 
-// Helper: Add type to each query record
 function tagWithType(data: any[] | undefined, type: string): any[] {
   if (!Array.isArray(data)) return [];
   return data.map((item) => ({ ...item, type }));
@@ -27,14 +39,12 @@ export async function GET(
   console.log("🚀 [QueryInsight API] Called with ID:", id);
 
   try {
-    // 1. Lookup database config by inventory ID
     const result = await queryStaticAppDb(
       `SELECT * FROM IT_ManagementDB.dbo.DatabaseInventory WHERE InventoryID = @id`,
       { id },
     );
 
     if (result.recordset.length === 0) {
-      console.warn("❌ No database found for ID:", id);
       return NextResponse.json(
         { message: "Database not found" },
         { status: 404 },
@@ -42,56 +52,77 @@ export async function GET(
     }
 
     const db = result.recordset[0];
-    const dbType = (db.databaseType || "").toUpperCase();
-    const driver = drivers[dbType];
+    const rawPool = await getSQLConnectionByInventory(db);
+    // Removed DEBUG console logs from here
 
-    console.log("🗄️ DB Config:", db);
-    console.log("🔧 DB Type:", dbType, "| Driver found:", !!driver);
-
-    if (!driver || !driver.getQueryAnalysis) {
+    if (!rawPool) {
       return NextResponse.json(
-        {
-          message: `Driver not supported or getQueryAnalysis not implemented for: ${dbType}`,
-        },
-        { status: 400 },
+        { message: "Failed to connect to DB or unsupported type" },
+        { status: 500 },
       );
     }
 
-    // 2. Connect and analyze
-    const pool = await getSQLConnectionByInventory(db);
     console.log("🔗 Connection established");
 
-    const rawInsights = await driver.getQueryAnalysis(pool);
+    let rawInsights: QueryAnalysis;
+
+    // rawPool เป็น AnyPool (อ็อบเจกต์ wrapper ที่มีคุณสมบัติ 'type' และ 'pool')
+    switch (rawPool.type) {
+      case "mssql": {
+        // เปลี่ยน MSSQLPool เป็น MSSQLConnectionPool เพื่อให้ตรงกับประเภทของ (rawPool as MSSQLPool).pool
+        const driver = drivers.MSSQL as unknown as BaseDriver<MSSQLConnectionConfig, MSSQLConnectionPool>;
+        // ส่ง actual MSSQL pool ไปยัง driver
+        rawInsights = await driver.getQueryAnalysis((rawPool as MSSQLPool).pool);
+        break;
+      }
+      case "postgresql": {
+        // เปลี่ยน PostgreSQLPool เป็น PgNativePool เพื่อให้ตรงกับประเภทของ (rawPool as PostgreSQLPool).pool
+        const driver = drivers.POSTGRES as unknown as BaseDriver<PostgreSQLConnectionConfig, PgNativePool>;
+        // ส่ง actual PostgreSQL pool ไปยัง driver
+        rawInsights = await driver.getQueryAnalysis((rawPool as PostgreSQLPool).pool);
+        break;
+      }
+      case "mysql": {
+        // เปลี่ยน MySQLPool เป็น MySQLNativePool เพื่อให้ตรงกับประเภทของ (rawPool as MySQLPool).pool
+        const driver = drivers.MYSQL as unknown as BaseDriver<MySQLConnectionConfig, MySQLNativePool>;
+        // ส่ง actual MySQL pool ไปยัง driver
+        rawInsights = await driver.getQueryAnalysis((rawPool as MySQLPool).pool);
+        break;
+      }
+      default:
+        return NextResponse.json(
+          { message: "Unsupported or unknown database type" },
+          { status: 400 },
+        );
+    }
+
     console.log("📦 Raw insights received");
 
-    // 3. Add `type` to each category
     const finalInsights = {
       runningQueries: tagWithType(rawInsights.runningQueries, "running_query"),
       slowQueries: tagWithType(rawInsights.slowQueries, "slow_query"),
-      blockingQueries: tagWithType(
-        rawInsights.blockingQueries,
-        "blocking_query",
-      ),
+      blockingQueries: tagWithType(rawInsights.blockingQueries, "blocking_query"),
       waitStats: tagWithType(rawInsights.waitStats, "wait_stats"),
       deadlocks: tagWithType(rawInsights.deadlocks, "deadlock_event"),
       tempDbUsage: tagWithType(
-        rawInsights.tempDbUsage || rawInsights.tempdbUsage,
+        rawInsights.tempDbUsage || rawInsights.tempDbUsage,
         "high_tempdb_usage",
       ),
     };
 
-    // 4. Summary log
     Object.entries(finalInsights).forEach(([key, items]) => {
       console.log(`📊 ${key}: ${items.length} item(s)`);
     });
 
-    // 5. Send result to frontend
     return NextResponse.json(finalInsights);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("❌ Error in /query-insight route:", error.message);
+    console.error(`[QueryInsight] ❌ ID: ${id} -`, message);
     return NextResponse.json(
-      { message: "Failed to load query insights", error: error.message },
+      {
+        message: "Failed to load query insights",
+        details: message,
+      },
       { status: 500 },
     );
   }

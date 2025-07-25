@@ -1,17 +1,26 @@
 import { Pool } from "pg";
-import { Driver, Metrics, AnyPool, PerformanceInsight } from "@/types";
-
-const postgresDriver: Driver = {
-  connect: async (config: any): Promise<AnyPool> => {
-    // PostgreSQL driver creates a pool which manages connections automatically.
-    return new Pool(config);
+import { Metrics, AnyPool, PerformanceInsight, PostgreSQLPool } from "@/types";
+import { BaseDriver, PostgreSQLConnectionConfig } from "@/types";
+const postgresDriver: BaseDriver<PostgreSQLConnectionConfig, PostgreSQLPool> = {
+  connect: async (config) => {
+    const pool = new Pool({
+      host: config.server,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      connectionTimeoutMillis: config.connectionTimeout ?? 15000,
+    });
+    return pool;
   },
+  disconnect: async (pool) => pool.end(),
 
-  disconnect: async (pool: AnyPool): Promise<void> => {
-    // Closes all clients in the pool and terminates the pool.
-    await (pool as Pool).end();
+
+
+  listDatabases: async (pool) => {
+    const res = await pool.query(`SELECT datname FROM pg_database WHERE datistemplate = false`);
+    return res.rows.map(r => r.datname);
   },
-
   getMetrics: async (pool: AnyPool): Promise<Partial<Metrics>> => {
     const pgPool = pool as Pool;
 

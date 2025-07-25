@@ -9,7 +9,7 @@ import { EditDatabaseModal } from "@/components/shared/forms/EditDatabaseModal";
 import { ServerDetailModal } from "@/components/shared/forms/ServerDetailModal";
 import {
   DatabaseInventory,
-  ServerMetrics,
+  Metrics,
   ServerFormData,
   PerformanceInsight,
 } from "@/types";
@@ -36,9 +36,9 @@ const useInventoryManager = () => {
       setServers(
         serverList.sort((a, b) => a.systemName.localeCompare(b.systemName)),
       );
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(err.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setError(message);
       setServers([]);
     } finally {
       setIsLoading(false);
@@ -55,7 +55,7 @@ const useInventoryManager = () => {
 const REFRESH_INTERVAL_MS = 60000;
 
 const useDatabaseMetrics = (server: DatabaseInventory | null) => {
-  const [metrics, setMetrics] = useState<ServerMetrics | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,9 +70,9 @@ const useDatabaseMetrics = (server: DatabaseInventory | null) => {
 
       const json = await res.json();
       setMetrics(json);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(err.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setError(message);
       setMetrics(null);
     } finally {
       setIsLoading(false);
@@ -101,9 +101,9 @@ const useHardwareMetrics = (server: DatabaseInventory | null) => {
       if (!res.ok) throw new Error("Failed to fetch hardware metrics");
       const json = await res.json();
       setHardware(json);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setHardwareError(err.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setHardwareError(message);
       setHardware(null);
     }
   }, [server?.inventoryID]);
@@ -135,9 +135,9 @@ const useQueryInsights = (server: DatabaseInventory | null) => {
 
       const json: PerformanceInsight = await res.json();
       setInsights(json);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(err.message || "Unknown error");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      setError(message || "Unknown error");
       setInsights(null);
     } finally {
       setLoading(false);
@@ -176,7 +176,10 @@ const Home: FC = () => {
     error: metricsError,
     refreshMetrics,
   } = useDatabaseMetrics(activeServer);
-  const { hardware, hardwareError, refreshHardware } =
+  const hardware: unknown
+  = metrics?.hardware || null;
+  const { hardwareError, refreshHardware }
+   =
     useHardwareMetrics(activeServer);
   const {
     insights,
@@ -194,9 +197,8 @@ const Home: FC = () => {
     },
     {},
   );
-
   const mergedMetrics = metrics
-    ? { ...metrics, hardware: { ...hardware } ?? {}, hardwareError }
+    ? { ...metrics, hardware: hardware ?? {}, hardwareError }
     : { databaseMetrics: {}, hardware: {}, hardwareError: null };
 
   useEffect(() => {
@@ -230,7 +232,7 @@ const Home: FC = () => {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
       alert(
-        `Error adding server: ${error.message || "An unknown error occurred."}`,
+        `Error adding server: ${message || "An unknown error occurred."}`,
       );
     } finally {
       await refreshServers();
@@ -258,7 +260,7 @@ const Home: FC = () => {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
       alert(
-        `Error updating server: ${error.message || "An unknown error occurred."}`,
+        `Error updating server: ${message || "An unknown error occurred."}`,
       );
     } finally {
       await refreshServers();
@@ -284,7 +286,7 @@ const Home: FC = () => {
         const message =
           error instanceof Error ? error.message : "Unknown error";
         alert(
-          `Error deleting server: ${error.message || "An unknown error occurred."}`,
+          `Error deleting server: ${message || "An unknown error occurred."}`,
         );
       } finally {
         await refreshServers();
@@ -337,11 +339,11 @@ const Home: FC = () => {
               insightError={insightError}
             />
 
-            {metrics?.databases && (
-              <DatabaseTableView
-                databases={metrics.databases}
-                inventoryID={activeServer?.inventoryID}
-              />
+            {metrics?.databaseInfo && (
+          <DatabaseTableView
+          databases={metrics.databaseInfo} 
+          inventoryID={activeServer?.inventoryID}
+      />
             )}
           </>
         ) : (

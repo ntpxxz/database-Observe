@@ -1,4 +1,4 @@
-import React, { FC, useState, useEffect, useMemo } from "react";
+import React, { FC, useState, useEffect, useMemo, JSX } from "react";
 import {
   AlertCircle,
   TrendingUp,
@@ -20,7 +20,6 @@ import {
   Play,
   Square,
   Terminal,
-  AlertTriangle,
   Bot,
 } from "lucide-react";
 import { PerformanceInsight } from "@/types";
@@ -165,7 +164,7 @@ function getNumericValue(insight: any, key: string): number {
 // CSV Export function
 const exportToCSV = (
   insights: any[],
-  filename: string = "performance_insights.csv",
+  filename: string = "performance_insights.csv"
 ) => {
   const headers = [
     "Type",
@@ -234,13 +233,15 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   const [showFilters, setShowFilters] = useState(false);
   const [showManualQuery, setShowManualQuery] = useState(false);
   const [manualQuery, setManualQuery] = useState("");
-  const [queryResult, setQueryResult] = useState<any>(null);
+  const [queryResult, setQueryResult] = useState<unknown>(null);
   const [isExecutingQuery, setIsExecutingQuery] = useState(false);
   const [killingSession, setKillingSession] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const ROWS_PER_PAGE = 10;
-  const normalizedInsights = Array.isArray(insights) ? insights : [];
+  const normalizedInsights = useMemo(() => {
+    return Array.isArray(insights) ? insights : [];
+  }, [insights]); // insights เป็น dependency ถ้า insights เปลี่ยน normalizedInsights จะถูกคำนวณใหม่
 
   // Sort configuration
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -261,14 +262,14 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   // Get unique types for filter dropdown
   const availableTypes = useMemo(() => {
     const types = new Set(
-      normalizedInsights.map((insight) => insight.type || "query"),
+      normalizedInsights.map((insight) => insight.type || "query")
     );
     return Array.from(types);
   }, [normalizedInsights]);
 
   // Apply filters and sorting
   const filteredAndSortedInsights = useMemo(() => {
-    let filtered = normalizedInsights.filter((insight) => {
+    const filtered = normalizedInsights.filter((insight) => {
       // Type filter
       if (filterConfig.type !== "all" && insight.type !== filterConfig.type) {
         return false;
@@ -303,7 +304,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
 
     // Apply sorting
     filtered.sort((a, b) => {
-      let aValue: any, bValue: any;
+      let aValue: unknown, bValue: unknown;
 
       switch (sortConfig.field) {
         case "type":
@@ -324,10 +325,10 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
           break;
         case "timestamp":
           aValue = new Date(
-            a.timestamp || a.start_time || "1970-01-01",
+            a.timestamp || a.start_time || "1970-01-01"
           ).getTime();
           bValue = new Date(
-            b.timestamp || b.start_time || "1970-01-01",
+            b.timestamp || b.start_time || "1970-01-01"
           ).getTime();
           break;
         default:
@@ -382,7 +383,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     }
   };
 
-
   // Handle manual query execution
   const handleExecuteQuery = async () => {
     if (!onExecuteQuery || !manualQuery.trim()) return;
@@ -392,7 +392,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
       const result = await onExecuteQuery(manualQuery);
       setQueryResult(result);
     } catch (error) {
-      setQueryResult({ error: error.toString() });
+      setQueryResult({ error: String(error) });
     } finally {
       setIsExecutingQuery(false);
     }
@@ -408,7 +408,8 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
       });
       const data = await res.json();
       setAiSuggestion(data.suggestion);
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error("Error fetching AI suggestion:", error);
       setAiSuggestion("Failed to fetch suggestion.");
     } finally {
       setLoadingSuggestion(false);
@@ -447,7 +448,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     return (
       <div className="p-4 bg-red-500/10 text-red-300 rounded-lg text-sm flex items-center gap-2">
         <AlertCircle size={16} />
-        {insights.error}
+        {insights}
       </div>
     );
   }
@@ -463,12 +464,12 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   }
 
   const totalPages = Math.ceil(
-    filteredAndSortedInsights.length / ROWS_PER_PAGE,
+    filteredAndSortedInsights.length / ROWS_PER_PAGE
   );
   const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
   const currentInsights = filteredAndSortedInsights.slice(
     startIndex,
-    startIndex + ROWS_PER_PAGE,
+    startIndex + ROWS_PER_PAGE
   );
 
   return (
@@ -604,9 +605,9 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
         </div>
       )}
 
-      {/* Manual Query Panel */}
       {showManualQuery && (
         <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-4">
+          {/* Query Input */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">
               SQL Query
@@ -620,6 +621,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
             />
           </div>
 
+          {/* Execute Button */}
           <div className="flex gap-2">
             <button
               onClick={handleExecuteQuery}
@@ -640,20 +642,44 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
             </button>
           </div>
 
-          {queryResult && (
-            <div className="mt-4">
-              <h4 className="text-sm font-medium text-slate-300 mb-2">
-                Query Result:
-              </h4>
-              <pre className="bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-slate-200 overflow-auto max-h-60">
-                {queryResult.error ? (
-                  <span className="text-red-300">{queryResult.error}</span>
-                ) : (
-                  JSON.stringify(queryResult, null, 2)
-                )}
-              </pre>
-            </div>
-          )}
+          {/* Query Result */}
+          {queryResult !== null && queryResult !== undefined && (
+  <div className="mt-4">
+    <h4 className="text-sm font-medium text-slate-300 mb-2">
+      Query Result:
+    </h4>
+    <pre className="bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-slate-200 overflow-auto max-h-60 whitespace-pre-wrap">
+      {(() => {
+        try {
+          if (
+            typeof queryResult === "object" &&
+            queryResult !== null &&
+            "error" in queryResult
+          ) {
+            const errorMessage = (queryResult as any).error;
+            return (
+              <span className="text-red-300">
+                {typeof errorMessage === "string"
+                  ? errorMessage
+                  : JSON.stringify(errorMessage, null, 2)}
+              </span>
+            );
+          }
+
+          // JSON.stringify ปกติ
+          return JSON.stringify(queryResult, null, 2);
+        } catch (e) {
+          return (
+            <span className="text-red-300">
+              Failed to render result: {(e as Error).message}
+            </span>
+          );
+        }
+      })()}
+    </pre>
+  </div>
+)}
+
         </div>
       )}
 
@@ -685,7 +711,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                   onClick={() => handleSort("duration")}
                   className="flex items-center gap-1 hover:text-slate-200 transition-colors ml-auto"
                 >
-                  Duration / Value
+                  Duration (ms)
                   {renderSortIcon("duration")}
                 </button>
               </th>
@@ -799,7 +825,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
             Showing {startIndex + 1}-
             {Math.min(
               startIndex + ROWS_PER_PAGE,
-              filteredAndSortedInsights.length,
+              filteredAndSortedInsights.length
             )}{" "}
             of {filteredAndSortedInsights.length} insights
           </span>
@@ -832,13 +858,12 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
       {selectedInsight && (
         <InsightDetailModal
           insight={selectedInsight}
-          onClose={() => setSelectedInsight(null)}     
+          onClose={() => setSelectedInsight(null)}
           onAskAi={handleAskAi}
           aiSuggestion={aiSuggestion}
           loadingSuggestion={loadingSuggestion}
         />
       )}
-      
     </div>
   );
 };

@@ -1,26 +1,73 @@
-// mssqlDriver.ts - Optimized version with proper API structure
+// mssqlDriver.ts - เวอร์ชันที่ปรับปรุงแล้วพร้อม API structure ที่ถูกต้อง
 
 import sql, { ConnectionPool, IResult } from "mssql";
 import {
-  Driver as IDriver,
   Metrics,
   QueryAnalysis,
   OptimizationSuggestions,
   PerformanceInsight,
   AnyPool,
-  DatabaseConnectionConfig,
+  MSSQLConnectionConfig,
+  MSSQLPool,
 } from "@/types";
-import { SQL_QUERIES } from "@/lib/sqlQueries"; // Import externalized queries
+import { SQL_QUERIES } from "@/lib/sqlQueries";
+
 // Constants
 const HIGH_TEMPDB_USAGE_MB = 100;
 const LONG_RUNNING_THRESHOLD_MS = 5000;
 
+// Type definitions for better type safety
+interface QueryData {
+  session_id?: number;
+  blocking_session_id?: number;
+  process_id_1?: number;
+  query_1?: string;
+  query_2?: string;
+  current_query?: string;
+  query_text?: string;
+  blocking_query?: string;
+  query?: string;
+  details?: { query?: string };
+  total_elapsed_time?: number;
+  percent_complete?: number;
+  blocker_login?: string;
+  blocked_login?: string;
+  blocked_session_id?: number;
+  wait_duration_ms?: number;
+  deadlock_time?: string;
+  process_id_2?: number;
+  usage_mb?: number;
+  login_name?: string;
+  mean_exec_time_ms?: number;
+  calls?: number;
+  program_name?: string;
+  client_net_address?: string;
+  status?: string;
+}
+
+interface DatabaseRow {
+  name: string;
+  sizeMB?: number;
+  state_desc?: string;
+  recovery_model_desc?: string;
+  compatibility_level?: number;
+  collation_name?: string;
+  create_date?: Date;
+}
+
+interface ConnectionData {
+  connection_count?: number;
+  cache_hit_ratio_percent?: number;
+  cpu_pressure_percent?: number;
+  total_size_mb?: number;
+}
+
 const createInsight = (
-  data: any,
+  data: QueryData,
   type: PerformanceInsight["type"],
   title: string,
-  messageBuilder: (d: any) => string,
-  severity: PerformanceInsight["severity"] = "warning",
+  messageBuilder: (d: QueryData) => string,
+  severity: PerformanceInsight["severity"] = "warning"
 ): PerformanceInsight => {
   const actualQuery =
     data.query_1 ||
@@ -54,7 +101,7 @@ const createInsight = (
   };
 };
 
-const isUserQuery = (q: any): boolean => {
+const isUserQuery = (q: QueryData): boolean => {
   const programName = String(q.program_name || "").toLowerCase();
   const loginName = String(q.login_name || "").toLowerCase();
   const queryText = String(
@@ -64,7 +111,7 @@ const isUserQuery = (q: any): boolean => {
       q.query_1 ||
       q.query_2 ||
       q.query ||
-      "",
+      ""
   ).toLowerCase();
 
   const systemPrograms = [
@@ -114,11 +161,11 @@ const isUserQuery = (q: any): boolean => {
 };
 
 function generateInsights(data: {
-  slowQueries: any[];
-  runningQueries: any[];
-  blockingQueries: any[];
-  deadlocks: any[];
-  tempdbUsage: any[];
+  slowQueries: QueryData[];
+  runningQueries: QueryData[];
+  blockingQueries: QueryData[];
+  deadlocks: QueryData[];
+  tempdbUsage: QueryData[];
 }): PerformanceInsight[] {
   const insights: PerformanceInsight[] = [];
 
@@ -129,13 +176,13 @@ function generateInsights(data: {
         "slow_query",
         "Slow Historical Query Detected",
         (d) =>
-          `Query averaging ${Math.round(d.mean_exec_time_ms / 1000)}s over ${d.calls} executions`,
-      ),
+          `Query averaging ${Math.round((d.mean_exec_time_ms || 0) / 1000)}s over ${d.calls || 0} executions`
+      )
     );
   });
 
   data.runningQueries
-    .filter((q) => q.total_elapsed_time > LONG_RUNNING_THRESHOLD_MS)
+    .filter((q) => (q.total_elapsed_time || 0) > LONG_RUNNING_THRESHOLD_MS)
     .filter(isUserQuery)
     .forEach((q) => {
       insights.push(
@@ -144,8 +191,8 @@ function generateInsights(data: {
           "long_running_query",
           "Long Running Query",
           (d) =>
-            `Query has been running for ${Math.round(d.total_elapsed_time / 1000)}s (${d.percent_complete || 0}% complete)`,
-        ),
+            `Query has been running for ${Math.round((d.total_elapsed_time || 0) / 1000)}s (${d.percent_complete || 0}% complete)`
+        )
       );
     });
 
@@ -156,9 +203,9 @@ function generateInsights(data: {
         "blocking_query",
         "Query Blocking Detected",
         (d) =>
-          `Session ${d.blocking_session_id} (${d.blocker_login}) is blocking session ${d.blocked_session_id} (${d.blocked_login}) for ${Math.round(d.wait_duration_ms / 1000)}s`,
-        "critical",
-      ),
+          `Session ${d.blocking_session_id} (${d.blocker_login}) is blocking session ${d.blocked_session_id} (${d.blocked_login}) for ${Math.round((d.wait_duration_ms || 0) / 1000)}s`,
+        "critical"
+      )
     );
   });
 
@@ -170,13 +217,13 @@ function generateInsights(data: {
         "Deadlock Event Detected",
         (d) =>
           `Deadlock occurred at ${d.deadlock_time} involving processes ${d.process_id_1} and ${d.process_id_2}`,
-        "critical",
-      ),
+        "critical"
+      )
     );
   });
 
   data.tempdbUsage
-    .filter((t) => t.usage_mb > HIGH_TEMPDB_USAGE_MB)
+    .filter((t) => (t.usage_mb || 0) > HIGH_TEMPDB_USAGE_MB)
     .filter(isUserQuery)
     .forEach((t) => {
       insights.push(
@@ -185,8 +232,8 @@ function generateInsights(data: {
           "high_tempdb_usage",
           "High TempDB Usage",
           (d) =>
-            `Session ${d.session_id} (${d.login_name}) is using ${Math.round(d.usage_mb)} MB of TempDB space`,
-        ),
+            `Session ${d.session_id} (${d.login_name}) is using ${Math.round(d.usage_mb || 0)} MB of TempDB space`
+        )
       );
     });
 
@@ -199,46 +246,81 @@ const LIST_DATABASES_QUERY = `
   ORDER BY name
 `;
 
-const mssqlDriver: IDriver = {
-  // In mssqlDriver.ts
-  connect: async (config: DatabaseConnectionConfig): Promise<AnyPool> => {
+const mssqlDriver = {
+  // ✅ แก้ไข method signature ให้ตรงกับ interface
+  connect: async (config: MSSQLConnectionConfig): Promise<MSSQLPool> => {
     const pool = new sql.ConnectionPool({
-      server: config.server,
-      user: config.user,
-      password: config.password,
-      database: config.database,
-      port: config.port,
+      user: config.connectionUsername, // ใช้ connectionUsername
+      password: config.credentialReference, // ใช้ credentialReference
+      server: config.serverHost, // ใช้ serverHost
+      database: config.databaseName, // ใช้ databaseName
+      port: config.port, // ใช้ config.port
       connectionTimeout: config.connectionTimeout || 30000,
       requestTimeout: config.requestTimeout || 30000,
       options: {
-        encrypt: config.encrypt || false,
-        trustServerCertificate: true,
-        enableArithAbort: true,
-        appName: "ObserveApp-Monitor",
+        encrypt: config.options?.encrypt ?? true, // ใช้ ?? เพื่อ fallback ค่า default
+        trustServerCertificate: config.options?.trustServerCertificate ?? true,
+        enableArithAbort: config.options?.enableArithAbort ?? true,
+        appName: config.options?.appName || "ObserveApp-Monitor",
       },
       pool: {
-        max: config.poolMax || 10,
-        min: config.poolMin || 0,
-        idleTimeoutMillis: config.idleTimeout || 30000,
+        max: config.pool?.max || 10,
+        min: config.pool?.min || 0,
+        idleTimeoutMillis: config.pool?.idleTimeoutMillis || 30000,
       },
     });
 
-    await pool.connect();
-    return pool;
+    try {
+      await pool.connect();
+      pool.on("error", (err) => {
+        console.error(`MSSQL pool error:`, err);
+        pool.close(); // ปิด pool เมื่อเกิดข้อผิดพลาด
+      });
+      return { type: "mssql", pool }; // ส่งคืน Object ที่ตรงกับ MSSQLPool interface
+    } catch (err) {
+      console.error("[MSSQL Driver] Connection failed:", err);
+      throw err;
+    }
+  },
+  async disconnect(wrappedPool: AnyPool): Promise<void> {
+    if (wrappedPool.type === "mssql") {
+      try {
+        await wrappedPool.pool.close(); // เข้าถึง native pool ผ่าน .pool property
+      } catch (err) {
+        console.error("[MSSQL Driver] Disconnect failed:", err);
+        throw err;
+      }
+    } else {
+      console.warn(
+        "Attempted to disconnect a non-MSSQL pool using mssqlDriver."
+      );
+    }
   },
 
-  disconnect: async (pool: AnyPool): Promise<void> => {
-    await (pool as ConnectionPool).close();
-  },
-
-  getDatabases: async (pool: AnyPool): Promise<string[]> => {
-    const mssqlPool = pool as ConnectionPool;
+  listDatabases: async (wrappedPool: AnyPool): Promise<string[]> => {
+    if (wrappedPool.type !== "mssql") {
+      throw new Error("Invalid pool type for MSSQL driver.");
+    }
+    const mssqlPool = wrappedPool.pool;
     const result = await mssqlPool.request().query(LIST_DATABASES_QUERY);
-    return result.recordset.map((row: any) => row.name);
+    return result.recordset?.map((row: { name: string }) => row.name) || [];
   },
 
-  getMetrics: async (pool: AnyPool): Promise<Partial<Metrics>> => {
-    const mssqlPool = pool as ConnectionPool;
+  getDatabases: async (wrappedPool: AnyPool): Promise<string[]> => {
+    if (wrappedPool.type !== "mssql") {
+      throw new Error("Invalid pool type for MSSQL driver.");
+    }
+    const mssqlPool = wrappedPool.pool;
+    const result = await mssqlPool.request().query(LIST_DATABASES_QUERY);
+    return result.recordset?.map((row: { name: string }) => row.name) || [];
+  },
+
+  getMetrics: async (wrappedPool: AnyPool): Promise<Partial<Metrics>> => {
+    if (wrappedPool.type !== "mssql") {
+      throw new Error("Invalid pool type for MSSQL driver.");
+    }
+    const nativePool = wrappedPool.pool;
+    const mssqlPool = nativePool as ConnectionPool;
     const results = await Promise.allSettled([
       mssqlPool.request().query(SQL_QUERIES.connections),
       mssqlPool.request().query(SQL_QUERIES.cacheHitRate),
@@ -254,33 +336,34 @@ const mssqlDriver: IDriver = {
       mssqlPool.request().query(SQL_QUERIES.tempdbSessionUsage),
       mssqlPool.request().query(SQL_QUERIES.databaseInfo),
     ]);
-    const getResult = (r: PromiseSettledResult<IResult<any>>) =>
+
+    const getResult = (r: PromiseSettledResult<IResult<ConnectionData>>) =>
       r.status === "fulfilled" ? r.value.recordset : [];
 
     const insights = generateInsights({
-      runningQueries: getResult(results[4]),
-      blockingQueries: getResult(results[5]),
-      slowQueries: getResult(results[6]),
-      deadlocks: getResult(results[7]),
-      tempdbUsage: getResult(results[8]),
+      runningQueries: getResult(results[4]) as QueryData[],
+      blockingQueries: getResult(results[5]) as QueryData[],
+      slowQueries: getResult(results[6]) as QueryData[],
+      deadlocks: getResult(results[7]) as QueryData[],
+      tempdbUsage: getResult(results[8]) as QueryData[],
     });
 
     return {
       kpi: {
         connections: getResult(results[0])[0]?.connection_count || 0,
         cpu: Math.round(
-          100 - (getResult(results[2])[0]?.cpu_pressure_percent || 0),
+          100 - (getResult(results[2])[0]?.cpu_pressure_percent || 0)
         ),
       },
       stats: {
         cache_hit_rate: Math.round(
-          getResult(results[1])[0]?.cache_hit_ratio_percent || 0,
+          getResult(results[1])[0]?.cache_hit_ratio_percent || 0
         ),
         databaseSize: Math.round(getResult(results[3])[0]?.total_size_mb || 0),
       },
       performanceInsights: insights,
 
-      databaseInfo: getResult(results[9]).map((db) => ({
+      databaseInfo: (getResult(results[9]) as DatabaseRow[]).map((db) => ({
         name: db.name,
         sizeMB: db.sizeMB,
         state: db.state_desc || "ONLINE",
@@ -292,18 +375,18 @@ const mssqlDriver: IDriver = {
     };
   },
 
-  getQueryAnalysis: async (pool: AnyPool): Promise<QueryAnalysis> => {
-    const mssqlPool = pool as ConnectionPool;
+  getQueryAnalysis: async (pool: ConnectionPool): Promise<QueryAnalysis> => {
+    // <-- แก้ไขตรงนี้
     const results = await Promise.allSettled([
-      mssqlPool.request().query(SQL_QUERIES.runningQueries),
-      mssqlPool.request().query(SQL_QUERIES.slowQueriesHistorical),
-      mssqlPool.request().query(SQL_QUERIES.blockingQueries),
-      mssqlPool.request().query(SQL_QUERIES.waitStats),
-      mssqlPool.request().query(SQL_QUERIES.deadlockAnalysis),
-      mssqlPool.request().query(SQL_QUERIES.tempdbSessionUsage),
+      pool.request().query(SQL_QUERIES.runningQueries), // ใช้ pool.request() โดยตรง
+      pool.request().query(SQL_QUERIES.slowQueriesHistorical),
+      pool.request().query(SQL_QUERIES.blockingQueries),
+      pool.request().query(SQL_QUERIES.waitStats),
+      pool.request().query(SQL_QUERIES.deadlockAnalysis),
+      pool.request().query(SQL_QUERIES.tempdbSessionUsage),
     ]);
 
-    const getResult = (r: PromiseSettledResult<IResult<any>>) =>
+    const getResult = (r: PromiseSettledResult<IResult<QueryData>>) =>
       r.status === "fulfilled" ? r.value.recordset : [];
 
     const rawData = {
@@ -315,7 +398,7 @@ const mssqlDriver: IDriver = {
       tempdbUsage: getResult(results[5]).filter(isUserQuery),
     };
 
-    const insights = generateInsights(rawData); // <✅ ตรงนี้แปลงเป็น insight array
+    const insights = generateInsights(rawData);
 
     return {
       ...rawData,
@@ -324,16 +407,19 @@ const mssqlDriver: IDriver = {
   },
 
   getOptimizationSuggestions: async (
-    pool: AnyPool,
+    pool: AnyPool
   ): Promise<OptimizationSuggestions> => {
-    const mssqlPool = pool as ConnectionPool;
+    const mssqlPool = pool as unknown as ConnectionPool;
     const results = await Promise.allSettled([
       mssqlPool.request().query(SQL_QUERIES.unusedIndexes),
       mssqlPool.request().query(SQL_QUERIES.fragmentedIndexes),
       mssqlPool.request().query(SQL_QUERIES.missingIndexes),
     ]);
-    const getResult = (r: PromiseSettledResult<IResult<any>>) =>
-      r.status === "fulfilled" ? r.value.recordset : [];
+
+    const getResult = (
+      r: PromiseSettledResult<IResult<Record<string, unknown>>>
+    ) => (r.status === "fulfilled" ? r.value.recordset : []);
+
     return {
       unusedIndexes: getResult(results[0]),
       fragmentedIndexes: getResult(results[1]),
@@ -341,16 +427,20 @@ const mssqlDriver: IDriver = {
     };
   },
 
-  analyzeDatabaseHealth: async (pool: AnyPool): Promise<any> => {
-    const mssqlPool = pool as ConnectionPool;
+  analyzeDatabaseHealth: async (
+    pool: AnyPool
+  ): Promise<Record<string, unknown>> => {
+    const mssqlPool = pool as unknown as ConnectionPool;
     const results = await Promise.allSettled([
       mssqlPool.request().query(SQL_QUERIES.systemAnalysis),
       mssqlPool.request().query(SQL_QUERIES.connectionDetails),
       mssqlPool.request().query(SQL_QUERIES.performanceMetrics),
       mssqlPool.request().query(SQL_QUERIES.tempdbUsage),
     ]);
-    const getResult = (r: PromiseSettledResult<IResult<any>>) =>
+
+    const getResult = (r: PromiseSettledResult<IResult<QueryData>>) =>
       r.status === "fulfilled" ? r.value.recordset : [];
+
     const connections = getResult(results[1]);
     const tempdb = getResult(results[3])[0] || {};
 
@@ -373,25 +463,30 @@ const mssqlDriver: IDriver = {
       tempdb: {
         ...tempdb,
         usage_percentage:
-          tempdb.total_space_mb > 0
+          (tempdb.total_space_mb || 0) > 0
             ? Math.round(
-                ((tempdb.total_space_mb - tempdb.free_space_mb) /
-                  tempdb.total_space_mb) *
-                  100,
+                (((tempdb.total_space_mb || 0) - (tempdb.free_space_mb || 0)) /
+                  (tempdb.total_space_mb || 0)) *
+                  100
               )
             : 0,
       },
       timestamp: new Date().toISOString(),
     };
   },
-  getProblemQueries: function (pool: AnyPool): Promise<any> {
+
+  getProblemQueries: function (
+    _pool: AnyPool
+  ): Promise<Record<string, unknown>> {
     throw new Error("Function not implemented.");
   },
+
   getPerformanceInsights: function (
-    pool: AnyPool,
+    _pool: AnyPool
   ): Promise<PerformanceInsight[] | { error: string }> {
     throw new Error("Function not implemented.");
   },
+
   async killSession(pool: ConnectionPool, sessionId: string): Promise<void> {
     await pool.request().query(`KILL ${sessionId}`);
   },
@@ -404,19 +499,19 @@ const mssqlDriver: IDriver = {
       const result = await request.query(query);
       console.log("Manual query result:", result);
 
-      return result.recordset; // หรือ return ทั้ง result ถ้าอยากได้ metadata
+      return result.recordset;
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
       console.error("[ExecuteQuery Error]", {
-        message: error.message,
-        stack: error.stack,
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
         error,
       });
 
-      // Propagate the error to API
-      throw new Error(`Failed to execute query: ${error.message}`);
+      throw new Error(
+        `Failed to execute query: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
     }
   },
-};
+} satisfies Driver;
 
 export default mssqlDriver;

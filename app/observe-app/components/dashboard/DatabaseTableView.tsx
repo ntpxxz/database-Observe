@@ -15,8 +15,8 @@ interface DatabaseInfo {
 }
 
 interface Props {
-  databaseInfo: DatabaseInfo[];
-  inventoryID: string;
+  databaseInfo: undefined | DatabaseInfo[];
+  inventoryID: undefined | string;
 }
 
 export const DatabaseTableView: FC<Props> = ({ databaseInfo, inventoryID }) => {

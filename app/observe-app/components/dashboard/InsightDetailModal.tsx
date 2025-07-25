@@ -70,13 +70,14 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
       await navigator.clipboard.writeText(fullQuery);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (err) {
-      alert("Failed to copy query.");
+    } catch (error: unknown) { // ระบุ type เป็น unknown เพื่อความปลอดภัยของ type
+      console.error("Failed to copy query:", error); // แนะนำให้ log error ใน console
+      alert(`Failed to copy query: ${(error as Error).message}`);
     }
   };
 
   const handleAskAiClick = async () => {
-    if (!fullQuery || fullQuery === "No query text available.") return;
+    if (!fullQuery) return;
     console.log("Sending to AI:", fullQuery);
     await onAskAi?.(fullQuery);
   };

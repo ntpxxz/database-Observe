@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   DatabaseInventory,
-  Driver,
+  DriverMap,
   AnyPool,
   Metrics,
   QueryAnalysis,
   OptimizationSuggestions,
+  BaseDriver
 } from "@/types";
 
 import mssqlDriver from "@/lib/drivers/mssqlDriver";
@@ -13,19 +14,23 @@ import postgresDriver from "@/lib/drivers/postgresDriver";
 import mysqlDriver from "@/lib/drivers/mysqlDriver";
 import { queryAppDb as queryAppStaticDb } from "@/lib/appDb";
 
-const drivers: { [key: string]: Driver } = {
+const drivers: DriverMap = {
   MSSQL: mssqlDriver,
   POSTGRES: postgresDriver,
   MYSQL: mysqlDriver,
 };
 
+
+
 const VALID_ANALYSIS_LEVELS = ["basic", "detailed", "full"] as const;
 type AnalysisLevel = (typeof VALID_ANALYSIS_LEVELS)[number];
 
+// --- 3. ประมวลผล Metrics ตาม Level ที่เลือก ---
 async function processRequest(
   level: AnalysisLevel,
-  driver: Driver,
+  driver: BaseDriver<any, any>, 
   pool: AnyPool,
+
 ): Promise<
   Partial<Metrics> | QueryAnalysis | (QueryAnalysis & OptimizationSuggestions)
 > {
@@ -65,11 +70,12 @@ export async function GET(
   context: { params: Promise<{ id: string }> },
 ) {
   const startTime = Date.now();
-  const params = await context.params; // ✅ Await params first
+  const params = await context.params;
   const { id } = params || { id: request.nextUrl.searchParams.get("id") || "" };
 
   let targetPool: AnyPool | undefined;
-  let driver: Driver | undefined;
+  let driver: BaseDriver<any, any> | undefined;
+
 
   try {
     // --- 1. Validate Input ---
@@ -112,7 +118,9 @@ export async function GET(
       password: raw.credentialReference,
     };
 
-    driver = drivers[serverConfig.databaseType.toUpperCase()];
+    const dbType = serverConfig.databaseType.toUpperCase() as keyof DriverMap;
+    driver = drivers[dbType];    
+    
     if (!driver) {
       return NextResponse.json(
         { message: `Unsupported DB type: ${serverConfig.databaseType}` },
@@ -125,6 +133,12 @@ export async function GET(
     console.log(`[API Route] Connection established for ID: ${id}`);
 
     // --- 4. Process Request ---
+    if (!targetPool) {
+      return NextResponse.json(
+        { error: "Connection pool could not be established." },
+        { status: 500 }
+      );
+    }
     const resultData = await processRequest(analysisLevel, driver, targetPool);
 
     const duration = Date.now() - startTime;
@@ -142,19 +156,19 @@ export async function GET(
         timestamp: new Date().toISOString(),
       },
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+  } catch (error: unknown) {
+
+   
+    const message = error instanceof Error ? error.message : "Unknown error";
     const duration = Date.now() - startTime;
     console.error(
       `[API Route] CRITICAL ERROR - ID: ${id}, Duration: ${duration}ms`,
-      err,
+      error,
     );
     return NextResponse.json(
       {
-        error: `Internal server error: ${err.message}`,
-        code: "INTERNAL_ERROR",
-      },
-      { status: 500 },
+        error: "Internal server error", datails:message},
+        { status: 500 },     
     );
   } finally {
     // --- 6. Cleanup ---

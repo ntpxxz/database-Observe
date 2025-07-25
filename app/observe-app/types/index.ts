@@ -1,84 +1,159 @@
-import { ReactNode } from 'react';
+// types/index.ts
 import { Pool as PgPool } from 'pg';
 import { ConnectionPool as MssqlPool } from 'mssql';
+import { Pool as MysqlPool } from 'mysql2/promise';
 
-// Generic pool type that can be either Postgres or MSSQL pool
-export type AnyPool = PgPool | MssqlPool;
+export type DbType = 'MSSQL' | 'POSTGRES' | 'MYSQL';
+export function isDbType(value: string): value is DbType {
+  return (value === 'MSSQL' || value === 'POSTGRES' || value === 'MYSQL');
+}
+// =============================================================================
+// CONNECTION POOL CONFIGURATION
+// =============================================================================
 
-// Performance insight structure
-export interface PerformanceInsight {
-  details: any;
-  title: any;
-  id?: number;
-  query?: string;
-  duration?: number;
-  count?: number;
-  type?: string;
-  error?: string;
+// =============================================================================
+// DRIVER INTERFACES
+// =============================================================================
+export interface BaseDriver<TConfig, TPool,> {
+  connect(config: TConfig): Promise<TPool>;
+  disconnect(pool: TPool): Promise<void>;
+  listDatabases(pool: TPool): Promise<string[]>;
+  getMetrics(pool: TPool): Promise<Partial<Metrics>>;
+  getQueryAnalysis(pool: TPool): Promise<QueryAnalysis>;
+  getOptimizationSuggestions(pool: TPool): Promise<OptimizationSuggestions>;
+  getProblemQueries(pool: TPool): Promise<any>;
+  getPerformanceInsights(pool: TPool): Promise<PerformanceInsight[] | { error: string }>;
+  generateInsights?(data: QueryAnalysis): PerformanceInsight[];
 }
 
-// First, standardize the database types
-export type DbType = 'MSSQL' | 'POSTGRES' | 'MYSQL';
+export type DriverMap = {
+  MSSQL: BaseDriver<MSSQLConnectionConfig, MSSQLPool>;
+  POSTGRES: BaseDriver<PostgreSQLConnectionConfig, PostgreSQLPool>;
+  MYSQL: BaseDriver<MySQLConnectionConfig, MySQLPool>;
+};
 
-// Create a base connection config type
-export interface DatabaseConnectionConfig {
-  encrypt: boolean;
-  connectionTimeout: number;
-  user: string | undefined;
-  database: string | undefined;
-  password: string | undefined;
-  server: string;
-  serverHost: string;
+// MSSQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม ServerFormData และ error message)
+export interface MSSQLConnectionConfig {
+  databaseType: 'MSSQL';
+  serverHost: string; // เปลี่ยนจาก server เป็น serverHost
   port: number;
-  databaseType: DbType;
-  connectionUsername: string;
-  credentialReference: string;
-  appName?: string;  // Optional app name for connection
+  connectionUsername: string; // เปลี่ยนจาก user เป็น connectionUsername
+  credentialReference: string; // เปลี่ยนจาก password เป็น credentialReference
+  databaseName: string; // เปลี่ยนจาก database เป็น databaseName
   options?: {
     encrypt?: boolean;
     trustServerCertificate?: boolean;
     enableArithAbort?: boolean;
+    appName?: string;
   };
   requestTimeout?: number;
-  poolMax?: number;
-  poolMin?: number;
+  connectionTimeout?: number;
+  pool?: {
+    max?: number;
+    min?: number;
+    idleTimeoutMillis?: number;
+    getDatabase?: boolean;
+  };
+}
+
+// PostgreSQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม ServerFormData เพื่อความสอดคล้อง)
+export interface PostgreSQLConnectionConfig {
+  databaseType: 'POSTGRES';
+  serverHost: string; // เปลี่ยนจาก host เป็น serverHost
+  port: number;
+  connectionUsername: string; // เปลี่ยนจาก user เป็น connectionUsername
+  credentialReference: string; // เปลี่ยนจาก password เป็น credentialReference
+  databaseName: string; // เปลี่ยนจาก database เป็น databaseName
+  ssl?: boolean;
+  connectionTimeoutMillis?: number;
+  idleTimeoutMillis?: number;
+  max?: number;
+  min?: number;
+}
+
+// MySQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม ServerFormData เพื่อความสอดคล้อง)
+export interface MySQLConnectionConfig {
+  databaseType: 'MYSQL';
+  serverHost: string; // เปลี่ยนจาก host เป็น serverHost
+  port: number;
+  connectionUsername: string; // เปลี่ยนจาก user เป็น connectionUsername
+  credentialReference: string; // เปลี่ยนจาก password เป็น credentialReference
+  databaseName?: string; // เปลี่ยนจาก database เป็น databaseName (สามารถเป็น Optional ได้)
+  ssl?: boolean;
+  connectionLimit?: number;
+  waitForConnections?: boolean;
+  queueLimit?: number;
+  connectTimeout?: number;
   idleTimeout?: number;
 }
 
+export type AnyPool = MSSQLPool | PostgreSQLPool | MySQLPool;
 
-// API Helper functions
-export interface ServerConfig extends DatabaseConnectionConfig {
-  id?: string;
-  name: string;
-  zone?: string;
-  type: DbType;  // Use DbType instead of string literal
-  updated_at?: string;
+export interface MSSQLPool {
+  type: 'mssql';
+  pool: MssqlPool;
 }
 
-export interface Server {
-  id: number;
-  name: string;
-  serverHost: string;  // Change host to serverHost for consistency
+export interface PostgreSQLPool {
+  type: 'postgresql';
+  pool: PgPool;
+}
+
+export interface MySQLPool {
+  type: 'mysql';
+  pool: MysqlPool;
+}
+
+// =============================================================================
+// DATABASE INVENTORY
+// =============================================================================
+
+export interface BaseConnectionConfig {
+  databaseType: DbType;
+  port?: number;
+}
+export interface DatabaseInventory extends BaseConnectionConfig {
+  inventoryID?: string;
+  systemName: string;
+  serverHost: string;
   port: number;
-  zone?: string;
-  type: DbType;  // Use DbType
-  databaseName: string;  // Change database to databaseName
-  connectionUsername: string;  // Change username to connectionUsername
-  status: 'active' | 'inactive';
+  zone: string;
+  databaseType: DbType;
+  connectionUsername: string;
+  credentialReference: string;
+  databaseName?: string;
+  encrypt?: boolean;
+  notes?: string;
+  createdOn?: string;
+  createdBy?: string;
+  lastUpdatedOn?: string;
+  lastUpdatedBy?: string;
+  status: 'Active' | 'Inactive';
 }
 
-export type ServerFormData = Omit<DatabaseInventory, 'inventoryID' | 'createdDate' | 'updated_at'>;
+export type Server = DatabaseInventory
 
-// --- Props for UI Components ---
-
-export interface SidebarProps {
-  servers: Server[];
-  activeServerId: number | null;
-  onSelectServer: (id: number) => void;
+export interface ServerFormData extends BaseConnectionConfig {
+  inventoryID?: string;
+  systemName: string;
+  serverHost: string;
+  port: number;
+  connectionUsername: string;
+  credentialReference: string;
+  databaseName?: string;
+  encrypt?: boolean;
+  notes?: string;
+  createdOn?: string;
+  createdBy?: string;
+  lastUpdatedOn?: string;
+  lastUpdatedBy?: string;
+  status: 'Active' | 'Inactive';
 }
 
-export interface KPIWidgetProps {
-  icon: ReactNode;
+// =============================================================================
+// UI COMPONENTS
+// =============================================================================
+export interface SimpleCardProps {
   title: string;
   value: string | number | undefined;
   unit?: string;
@@ -92,7 +167,6 @@ export interface PerformanceInsightsTableProps {
 
 export interface ServerFormModalProps {
   isOpen: boolean;
-  
   onClose: () => void;
   onSave: (serverData: ServerFormData) => void;
   serverToEdit: Server | Partial<ServerFormData> | null;
@@ -114,6 +188,68 @@ export interface QueryAnalysisModalProps {
   onClose: () => void;
   query: PerformanceInsight | null;
 }
+
+export type InsightType =
+  | "running_query"
+  | "slow_query"
+  | "blocking_query"
+  | "wait_stats"
+  | "deadlock_event"
+  | "high_tempdb_usage";
+
+export interface InsightItem {
+  id?: string;
+  session_id?: string;
+  duration?: number;
+  query?: string;
+  // เพิ่ม properties อื่นๆ ที่เกี่ยวข้องกับ insight item เช่น text, start_time, end_time, etc.
+}
+
+export interface RunningQuery extends InsightItem {
+  session_id: number;
+  current_query: string;
+  total_elapsed_time: number;
+  program_name: string;
+  login_name: string;
+}
+
+export interface SlowQuery extends InsightItem {
+  query_text: string;
+  mean_exec_time_ms: number;
+  calls: number;
+}
+
+export interface BlockingQuery extends InsightItem {
+  blocking_session_id: number;
+  blocked_session_id: number;
+  blocking_query: string;
+  blocked_query: string;
+  wait_duration_ms: number;
+  blocker_login: string;
+  blocked_login: string;
+}
+
+export interface WaitStats extends InsightItem {
+  wait_type: string;
+  wait_duration_ms: number;
+  resource_description: string;
+}
+
+export interface DeadlockEvent extends InsightItem {
+  deadlock_time: string;
+  process_id_1: number;
+  process_id_2: number;
+  query_1: string;
+  query_2: string;
+}
+
+export interface HighTempDbUsage extends InsightItem {
+  session_id: number;
+  usage_mb: number;
+  query: string;
+  login_name: string;
+}
+
 export interface HardwareMetric {
   database_name: string;
   data_size_mb: number;
@@ -122,6 +258,35 @@ export interface HardwareMetric {
   total_reads_count: number;
   total_writes_count: number;
 }
+
+
+export interface QueryAnalysis {
+  runningQueries: RunningQuery[];
+  slowQueries: SlowQuery[];
+  blockingQueries: BlockingQuery[];
+  waitStats: WaitStats[];
+  deadlocks: DeadlockEvent[];
+  tempDbUsage?: HighTempDbUsage[];
+}
+//
+export interface DatabaseInfo {
+  name: string;
+  sizeMB: number;
+  state: string;
+  recoveryModel: string;
+  compatibilityLevel: string;
+  collation: string;
+  createdDate: Date;
+  lastBackupDate?: Date;
+}
+export interface DatabaseInventoryWithDetails extends DatabaseInventory {
+  databases: DatabaseInfo[];
+  metrics?: Metrics;
+  lastUpdatedOn?: string;
+  lastUpdatedBy?: string;
+}
+
+
 export interface Metrics {
   kpi: {
     cpu?: number;
@@ -136,50 +301,11 @@ export interface Metrics {
   databaseInfo?: DatabaseInfo[];
   hardwareError?: string | null;
   error?: string | null;
-
   stats?: {
     cache_hit_rate?: string | number;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   performanceInsights: PerformanceInsight[] | { error: string };
-}
-
-// Update Driver interface to use specific config type
-export interface Driver {
-  [x: string]: any;
-  connect: (config: DatabaseConnectionConfig) => Promise<AnyPool>;
-  disconnect: (pool: AnyPool) => Promise<void>;
-  getMetrics: (pool: AnyPool) => Promise<Partial<Metrics>>;
-  getQueryAnalysis: (pool: AnyPool) => Promise<QueryAnalysis>;
-  getOptimizationSuggestions:(pool: AnyPool) => Promise<OptimizationSuggestions>;
-  getProblemQueries: (pool: AnyPool) => Promise<any>;
-  getPerformanceInsights: (pool: AnyPool) => Promise<PerformanceInsight[] | { error: string }>;
-  generateInsights?: (data: QueryAnalysis) => PerformanceInsight[];
-
-}
-
-export interface DatabaseInventory {
-  inventoryID: number;
-  systemName: string;
-  serverHost: string;
-  port: number;
-  zone: string;
-  databaseType: DbType;
-  connectionUsername: string;
-  credentialReference: string;
-  purposeNotes?: string;
-  ownerContact: string;
-  createdDate?: Date;
-  updated_at?: Date;
-}
-export interface DatabaseInventoryWithDatabases extends DatabaseInventory {
-  databases?: string[]; // optional at runtime
-}
-
-export interface DatabaseResponse {
-  success: boolean;
-  data?: DatabaseInventory | DatabaseInventory[];
-  error?: string;
 }
 
 export interface DatabaseMetrics {
@@ -192,151 +318,53 @@ export interface DatabaseMetrics {
   }>;
   last_checked: string;
 }
-export type DatabaseInventoryFormData = Omit<DatabaseInventory, 'id' | 'inventoryID'>;
-export interface QueryAnalysis {
-  runningQueries: RunningQuery[];
-  slowQueries: SlowQuery[];
-  blockingQueries: BlockingQuery[];
-  resourceUsage: ResourceUsage[];
-  indexUsage: IndexUsage[];
-  waitStats: WaitStat[];
-}
 
-export interface DatabaseInfo {
-  name: string;
-  sizeMB: number;
-  state: string; 
-  recoveryModel: string;
-  compatibilityLevel: string; 
-  collation: string; 
-  createdDate: Date;
-  lastBackupDate?: Date; 
-}
-
-export interface RunningQuery {
-  sessionId: string;
-  loginName: string;
-  hostName: string;
-  programName: string;
-  status: string;
-  command: string;
-  startTime: Date;
-  elapsedTime: number;
-  cpuTime: number;
-  logicalReads: number;
-  writes: number;
-  query: string;
-}
-
-export interface SlowQuery {
-  query: string;
-  totalExecutionTime: number;
-  avgExecutionTime: number;
-  executionCount: number;
-  totalLogicalReads: number;
-  avgLogicalReads: number;
-  lastExecutionTime: Date;
-}
-
-export interface BlockingQuery {
-  blockingSessionId: string;
-  blockedSessionId: string;
-  blockingQuery: string;
-  blockedQuery: string;
-  waitTime: number;
-  waitType: string;
-}
-
-export interface ResourceUsage {
-  databaseName: string;
-  cpuPercent: number;
-  ioPercent: number;
-  logSpaceUsed: number;
-  tempdbUsage: number;
-}
-
-export interface IndexUsage {
-  tableName: string;
-  indexName: string;
-  userSeeks: number;
-  userScans: number;
-  userLookups: number;
-  userUpdates: number;
-  lastUserSeek: Date;
-  sizeMB: number;
-}
-
-export interface WaitStat {
-  waitType: string;
-  waitingTasksCount: number;
-  waitTimeMs: number;
-  maxWaitTimeMs: number;
-  signalWaitTimeMs: number;
-}
 
 export interface OptimizationSuggestions {
-  missingIndexes: Array<{
-    impact: number;
-    createStatement: string;
-    tableSchema: string;
-    tableName: string;
-  }>;
-  unusedIndexes: Array<{
-    tableName: string;
-    indexName: string;
-    impact: number;
-    recommendation: string;
-  }>;
-  tableOptimizations: Array<{
-    tableName: string;
-    suggestion: string;
-    priority: 'high' | 'medium' | 'low';
-  }>;
+  indexSuggestions: unknown[]; // Placeholder, define more specific interface later
+  queryRewrites: unknown[]; // Placeholder
 }
 
-
-export interface ErrorResponse {
-  error: string;
-  code: string;
+export interface PerformanceInsight {
+  title: string;
+  queryId: string;
+  queryText: string;
+  executionPlan: string;
+  metrics: Metrics;
+  suggestions: OptimizationSuggestions;
+  
+  category: InsightType;
+  details: {
+    [key: string]: DbType
+  ;
+  };
   timestamp: string;
 }
 
-export interface SuccessResponse {
-  data: any; // Replace with your actual data type
-  meta: {
-    id: string;
-    analysisLevel: AnalysisLevel;
-    timestamp: string;
-  };
+// =============================================================================
+// DATABASE INVENTORY DASHBOARD
+// =============================================================================
+export interface SummaryCardProps {
+  title: string;
+  value: string | number;
+  description: string;
+  color: string;
 }
 
-// types.ts หรือในส่วนที่คุณเก็บ type
-export type InsightType =
-  | "running_query"
-  | "slow_query"
-  | "blocking_query"
-  | "wait_stats"
-  | "deadlock_event"
-  | "high_tempdb_usage";
-
-export interface InsightItem {
-  id?: string;
-  session_id?: string;
-  duration?: number;
-  query?: string;
-  database?: string;
-  wait_type?: string;
-  resource?: string;
-  count?: number;
-  [key: string]: any;
-  type?: InsightType; //
+export interface DatabaseTypeIconProps {
+  type: DbType;
+  size?: number;
 }
 
-export interface RawInsights {
-  runningQueries?: InsightItem[];
-  slowQueries?: InsightItem[];
-  blockingQueries?: InsightItem[];
-  waitStats?: InsightItem[];
-  deadlocks?: InsightItem[];
-  tempDbUsage?: InsightItem[];
+export interface StatItemProps {
+  label: string;
+  value: string | number;
+  tooltip?: string;
 }
+
+export interface HealthStatusPillProps {
+  status: 'Healthy' | 'Warning' | 'Critical' | 'Unknown';
+}
+
+
+

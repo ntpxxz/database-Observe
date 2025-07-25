@@ -40,11 +40,11 @@ export async function GET(
       password: serverConfig.credentialReference,
       database: serverConfig.databaseName,
       port: serverConfig.port,
-      server: serverConfig.serverHost,
-      appName: "ObserveApp",
+      server: serverConfig.serverHost,     
       options: {
         encrypt: true,
         trustServerCertificate: true,
+        appName: "ObserveApp-Monitor",
       },
       connectionTimeout: 15000,
       requestTimeout: 60000,
@@ -95,7 +95,7 @@ export async function GET(
     WHERE r.total_elapsed_time > 5000 -- ทำงานนานกว่า 5 วินาที
       AND s.is_user_process = 1
       AND r.session_id <> @@SPID -- 1. ไม่เอา session ที่กำลังรัน query นี้อยู่
-      AND s.program_name <> 'ObserveApp' -- 2. ไม่เอา session ที่มาจากแอปของเรา
+      AND s.program_name <> 'ObserveApp-Monitor' -- 2. ไม่เอา session ที่มาจากแอปของเรา
     ORDER BY r.total_elapsed_time DESC;
   `;
     const diskIoRateQuery = `
@@ -154,7 +154,7 @@ export async function GET(
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error(`[API Combined Metrics Error] for ID ${id}:`, error);
     return NextResponse.json(
-      { error: "Failed to fetch combined metrics.", details: error.message },
+      { error: "Failed to fetch combined metrics.", details:message },
       { status: 500 },
     );
   } finally {
