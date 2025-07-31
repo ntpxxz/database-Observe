@@ -3,23 +3,16 @@ import React, { FC, useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Database } from "lucide-react";
 import { Button } from "../ui/button";
 import { useRouter } from "next/navigation";
+import { DatabaseInfo } from "@/types";
 
-interface DatabaseInfo {
-  name: string;
-  sizeMB: number;
-  state: string;
-  recoveryModel: string;
-  compatibilityLevel: number;
-  collation: string;
-  createdDate: string;
-}
 
 interface Props {
   databaseInfo: undefined | DatabaseInfo[];
-  inventoryID: undefined | string;
+  inventoryID: undefined | string; 
 }
 
 export const DatabaseTableView: FC<Props> = ({ databaseInfo, inventoryID }) => {
+  console.log('DatabaseTableView rendered', { databaseInfo, inventoryID });
   const [currentPage, setCurrentPage] = useState(1);
   const ROWS_PER_PAGE = 10;
   const router = useRouter();
@@ -31,7 +24,7 @@ export const DatabaseTableView: FC<Props> = ({ databaseInfo, inventoryID }) => {
   if (!databaseInfo || databaseInfo.length === 0) {
     return (
       <p className="text-slate-400 text-sm text-center py-4">
-        No databases found.
+       
       </p>
     );
   }

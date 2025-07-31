@@ -57,7 +57,7 @@ export const ManagementPanel: FC<ManagementPanelProps> = ({
           <tbody>
             {servers.map((server) => (
               <tr
-                key={server.inventoryID}
+                key={server.inventoryID } 
                 onClick={() => onOpenDetailModal(server)}
                 className="border-b border-slate-700 hover:bg-slate-800/50 cursor-pointer"
               >

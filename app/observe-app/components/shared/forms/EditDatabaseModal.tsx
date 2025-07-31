@@ -27,6 +27,7 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
+    details?: string; 
   } | null>(null);
 
   useEffect(() => {
@@ -109,21 +110,20 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
           }),
         },
       );
-
-      const result = await response.json();
-      if (!response.ok)
-        throw new Error(result.message || "Connection test failed");
-      setTestResult(result);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      setTestResult({
-        success: false,
-        message: error.message || "เกิดข้อผิดพลาด",
-      });
-    } finally {
-      setIsTesting(false);
+    
+        const result = await response.json();
+        setTestResult(result);
+      } catch (error) {
+        setTestResult({
+          success: false,
+          message: "เกิดข้อผิดพลาดระหว่างการเชื่อมต่อ",
+          details: error instanceof Error ? error.message : String(error), // ✅ ไม่มี error แล้ว
+        });
+      } finally {
+        setIsTesting(false);
+      }
     }
-  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -147,11 +147,11 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
       onClose();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      alert(`เกิดข้อผิดพลาด: ${err.message}`);
+      alert(`เกิดข้อผิดพลาด: ${message}`);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }
 
   if (!isOpen || !formData) return null;
 

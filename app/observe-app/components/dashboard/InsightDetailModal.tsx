@@ -45,24 +45,28 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
 
   if (!insight) return null;
 
-  const details = insight.details || insight;
+  // Type-safe access to details with proper type checking
+  const details = (insight as any).details || insight;
 
-  const fullQuery =
-    details.query ||
-    details.query_text ||
-    details.blocked_query ||
-    details.query_1 ||
-    details.query_2 ||
+  // Type-safe query extraction with proper type checking
+  const fullQuery = 
+    (details as any).query ||
+    (details as any).queryText ||
+    (details as any).blocked_query ||
+    (details as any).query_1 ||
+    (details as any).query_2 ||
     insight.title ||
     "No query text available.";
 
-  const meanDuration = details?.mean_exec_time_ms;
-  const waitTime = details?.wait_duration_ms ?? details?.wait_time_ms;
+  // Type-safe number access with proper checking
+  const meanDuration = (details as any)?.mean_exec_time_ms as number | undefined;
+  const waitTime = ((details as any)?.wait_duration_ms ?? (details as any)?.wait_time_ms) as number | undefined;
+  
   const waitTimeText =
-    details?.wait_duration_ms &&
-    details?.wait_time_ms &&
-    details?.wait_duration_ms === details?.wait_time_ms
-      ? details?.wait_time_ms?.toLocaleString()
+    (details as any)?.wait_duration_ms &&
+    (details as any)?.wait_time_ms &&
+    (details as any)?.wait_duration_ms === (details as any)?.wait_time_ms
+      ? ((details as any)?.wait_time_ms as number)?.toLocaleString()
       : waitTime?.toLocaleString();
 
   const handleCopy = async () => {
@@ -70,16 +74,16 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
       await navigator.clipboard.writeText(fullQuery);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch (error: unknown) { // ระบุ type เป็น unknown เพื่อความปลอดภัยของ type
-      console.error("Failed to copy query:", error); // แนะนำให้ log error ใน console
-      alert(`Failed to copy query: ${(error as Error).message}`);
+    } catch (error: unknown) {
+      console.error("Failed to copy query:", error);
+      alert(`Failed to copy query: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const handleAskAiClick = async () => {
-    if (!fullQuery) return;
+    if (!fullQuery || !onAskAi) return;
     console.log("Sending to AI:", fullQuery);
-    await onAskAi?.(fullQuery);
+    await onAskAi(fullQuery);
   };
 
   return (
@@ -119,9 +123,9 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
               />
               <DetailItem
                 label="Total Calls"
-                value={details?.calls?.toLocaleString()}
+                value={((details as any)?.calls as number | undefined)?.toLocaleString()}
               />
-              <DetailItem label="Severity" value={insight.severity} />
+              {/*<DetailItem label="Severity" value={insight.severity} />*/}
             </div>
           </section>
 
@@ -134,10 +138,13 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
               </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2">
-              <DetailItem label="Session ID" value={details?.session_id} />
+              <DetailItem 
+                label="Session ID" 
+                value={(details as any)?.session_id as string | undefined} 
+              />
               <DetailItem
                 label="Blocking Session"
-                value={details?.blocking_session_id}
+                value={(details as any)?.blocking_session_id as string | undefined}
               />
             </div>
           </section>
@@ -151,15 +158,18 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
               </h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-2">
-              <DetailItem label="Wait Type" value={details?.wait_type} />
+              <DetailItem 
+                label="Wait Type" 
+                value={(details as any)?.wait_type as string | undefined} 
+              />
               <DetailItem label="Wait Time (ms)" value={waitTimeText} />
               <DetailItem
                 label="Waiting Tasks"
-                value={details?.waiting_tasks_count?.toLocaleString()}
+                value={((details as any)?.waiting_tasks_count as number | undefined)?.toLocaleString()}
               />
               <DetailItem
                 label="Resource Wait Time (ms)"
-                value={details?.resource_wait_time_ms?.toLocaleString()}
+                value={((details as any)?.resource_wait_time_ms as number | undefined)?.toLocaleString()}
               />
             </div>
           </section>
@@ -192,7 +202,7 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
             <div className="flex items-center gap-2 mb-2 text-emerald-400">
               <Bot size={16} />
               <h3 className="text-sm font-semibold uppercase tracking-wider">
-               Suggestion
+                AI Suggestion
               </h3>
             </div>
             {loadingSuggestion ? (
@@ -205,13 +215,13 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
           </section>
 
           {/* Blocked Query (Deadlock) */}
-          {details.query_2 && (
+          {(details as any).query_2 && (
             <section>
               <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                 Blocked Query (In Deadlock)
               </h3>
               <pre className="bg-slate-900/70 p-4 rounded-md text-sm text-amber-300 font-mono overflow-x-auto border border-slate-700">
-                <code>{details.query_2}</code>
+                <code>{(details as any).query_2}</code>
               </pre>
             </section>
           )}
@@ -221,14 +231,15 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
         <div className="p-6 border-t border-slate-700 flex justify-between">
           <button
             onClick={handleAskAiClick}
-            
-            className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-md"
+            disabled={!onAskAi || !fullQuery}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md"
           >
-            <Bot />
+            <Bot size={16} />
+            Ask AI
           </button>
           <button
             onClick={onClose}
-            className="bg-sky-600 hover:bg-sky-500 text-white  py-2 px-4 rounded-md"
+            className="bg-sky-600 hover:bg-sky-500 text-white py-2 px-4 rounded-md"
           >
             Close
           </button>

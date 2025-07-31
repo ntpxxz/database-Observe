@@ -26,7 +26,12 @@ export const SQL_QUERIES = {
         AND record LIKE '%<SystemHealth>%'
       ORDER BY timestamp DESC
     ) as rb`,
-
+  serverMemoryUsage: `
+    /* ObserveApp-Monitor:ServerMemoryUsage */
+SELECT 
+  (total_physical_memory_kb - available_physical_memory_kb) / 1024 AS used_memory_mb
+FROM sys.dm_os_sys_memory;
+  `,
   dbSize: `
     /* ObserveApp-Monitor:DatabaseSize */
     SELECT 

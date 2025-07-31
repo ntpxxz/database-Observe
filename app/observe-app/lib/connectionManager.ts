@@ -115,10 +115,11 @@ export async function getSQLConnectionByInventory(
     case "MYSQL": {
       const config = buildMySQLConfig(db);
       const pool = mysql.createPool(config);
-      pool.on("error", (err) => {
-        console.error(`MySQL pool error for ${key}:`, err);
-        poolMap.delete(key);
-      });
+      
+      // MySQL2 pool ไม่รองรับ error event listener โดยตรง
+      // แต่สามารถ handle error ผ่าน connection หรือ query ได้
+      // ถ้าต้องการ error handling ให้ทำผ่าน try-catch ใน query operations
+      
       const wrapped: MySQLPool = { type: "mysql", pool };
       poolMap.set(key, wrapped);
       return wrapped;
@@ -132,7 +133,7 @@ export async function getSQLConnectionByInventory(
 export async function queryAppDb(
   db: DatabaseInventory,
   queryTemplate: string,
-  params: { [key: string]: any } = {},
+  params: { [key: string]: unknown } = {},
 ) {
   const wrappedPool = await getSQLConnectionByInventory(db);
 
@@ -153,24 +154,32 @@ export async function queryAppDb(
 }
 
 export async function disconnectAllSQLPools() {
-  for (const [key, wrappedPool] of poolMap.entries()) {
-    try {
-      switch (wrappedPool.type) {
-        case "mssql":
-          await (wrappedPool as MSSQLPool).pool.close();
-          break;
-        case "postgresql":
-          await (wrappedPool as PostgreSQLPool).pool.end();
-          break;
-        case "mysql":
-          await (wrappedPool as MySQLPool).pool.end();
-          break;
-        default:
-          console.warn(`Unknown pool type encountered during disconnect for ${key}.`);
+  const promises: Promise<void>[] = [];
+  
+  poolMap.forEach((wrappedPool, key) => {
+    const disconnectPromise = (async () => {
+      try {
+        switch (wrappedPool.type) {
+          case "mssql":
+            await (wrappedPool as MSSQLPool).pool.close();
+            break;
+          case "postgresql":
+            await (wrappedPool as PostgreSQLPool).pool.end();
+            break;
+          case "mysql":
+            await (wrappedPool as MySQLPool).pool.end();
+            break;
+          default:
+            console.warn(`Unknown pool type encountered during disconnect for ${key}.`);
+        }
+      } catch (err) {
+        console.warn(`Error disconnecting pool for ${key}:`, err);
       }
-    } catch (err) {
-      console.warn(`Error disconnecting pool for ${key}:`, err);
-    }
-    poolMap.delete(key);
-  }
+    })();
+    
+    promises.push(disconnectPromise);
+  });
+  
+  await Promise.all(promises);
+  poolMap.clear();
 }

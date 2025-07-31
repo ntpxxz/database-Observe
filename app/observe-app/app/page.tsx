@@ -16,6 +16,13 @@ import {
 import { AlertCircle } from "lucide-react";
 import { DatabaseTableView } from "@/components/dashboard/DatabaseTableView";
 
+// Define hardware metrics interface
+interface HardwareMetrics {
+  cpuUsage: number;
+  databaseMetrics: any[];
+  [key: string]: any;
+}
+
 const useInventoryManager = () => {
   const [servers, setServers] = useState<DatabaseInventory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,7 +98,7 @@ const useDatabaseMetrics = (server: DatabaseInventory | null) => {
 };
 
 const useHardwareMetrics = (server: DatabaseInventory | null) => {
-  const [hardware, setHardware] = useState<unknown>(null);
+  const [hardware, setHardware] = useState<HardwareMetrics | null>(null);
   const [hardwareError, setHardwareError] = useState<string | null>(null);
 
   const fetchHardware = useCallback(async () => {
@@ -159,7 +166,7 @@ const useQueryInsights = (server: DatabaseInventory | null) => {
 const Home: FC = () => {
   const [modal, setModal] = useState<{
     type: "add" | "edit" | "detail" | null;
-    data?: any;
+    data?: DatabaseInventory;
   }>({ type: null });
   const [activeServer, setActiveServer] = useState<DatabaseInventory | null>(
     null,
@@ -176,11 +183,7 @@ const Home: FC = () => {
     error: metricsError,
     refreshMetrics,
   } = useDatabaseMetrics(activeServer);
-  const hardware: unknown
-  = metrics?.hardware || null;
-  const { hardwareError, refreshHardware }
-   =
-    useHardwareMetrics(activeServer);
+  const { hardware, refreshHardware } = useHardwareMetrics(activeServer);
   const {
     insights,
     error: insightError,
@@ -197,9 +200,17 @@ const Home: FC = () => {
     },
     {},
   );
-  const mergedMetrics = metrics
-    ? { ...metrics, hardware: hardware ?? {}, hardwareError }
-    : { databaseMetrics: {}, hardware: {}, hardwareError: null };
+
+  // Create a properly typed merged metrics object
+  const mergedMetrics: Metrics | null = metrics
+    ? {
+        ...metrics,
+        hardware: hardware || {
+          cpuUsage: 0,
+          databaseMetrics: [],
+        },
+      }
+    : null;
 
   useEffect(() => {
     if (
@@ -325,7 +336,7 @@ const Home: FC = () => {
               metrics={mergedMetrics}
               isLoading={isMetricsLoading}
               error={metricsError}
-              onRefresh={async (tab) => {
+              onRefresh={async (tab: string) => {
                 if (tab === "performance") {
                   await Promise.all([refreshMetrics(), refreshServers()]);
                 } else if (tab === "insights") {
@@ -337,14 +348,7 @@ const Home: FC = () => {
               insights={insights}
               insightsLoading={insightLoading}
               insightError={insightError}
-            />
-
-            {metrics?.databaseInfo && (
-          <DatabaseTableView
-          databases={metrics.databaseInfo} 
-          inventoryID={activeServer?.inventoryID}
-      />
-            )}
+            />          
           </>
         ) : (
           <ManagementPanel
@@ -369,14 +373,14 @@ const Home: FC = () => {
 
       <EditDatabaseModal
         isOpen={modal.type === "edit"}
-        server={modal.data}
+        server={modal.data ?? null}
         onClose={() => setModal({ type: null })}
         onEdit={handleEditServer}
       />
 
       <ServerDetailModal
         isOpen={modal.type === "detail"}
-        server={modal.data}
+        server={modal.data ?? null} 
         onClose={() => setModal({ type: null })}
       />
     </div>

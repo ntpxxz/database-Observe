@@ -1,12 +1,12 @@
 import React, { FC, useState, useEffect } from "react";
-import { DatabaseInventoryFormData, DbType } from "@/types";
+import { DatabaseInventory, DbType } from "@/types";
 import { X, CheckCircle, AlertTriangle } from "lucide-react";
 
 interface AddServerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAdd: (data: DatabaseInventoryFormData) => Promise<void>;
-  initialData?: Partial<DatabaseInventoryFormData> | null;
+  onAdd: (data: DatabaseInventory) => Promise<void>;
+  initialData?: Partial<DatabaseInventory> | null;
 }
 
 export const AddServerModal: FC<AddServerModalProps> = ({
@@ -15,7 +15,7 @@ export const AddServerModal: FC<AddServerModalProps> = ({
   onAdd,
   initialData,
 }) => {
-  const getInitialState = (): DatabaseInventoryFormData => ({
+  const getInitialState = (): DatabaseInventory => ({
     systemName: "",
     serverHost: "",
     port: 1433,
@@ -25,6 +25,8 @@ export const AddServerModal: FC<AddServerModalProps> = ({
     credentialReference: "",
     purposeNotes: "",
     ownerContact: "",
+    inventoryID: "",
+    status: "Active"
   });
 
   const defaultPorts: Record<DbType, number> = {
@@ -34,7 +36,7 @@ export const AddServerModal: FC<AddServerModalProps> = ({
   };
 
   const [formData, setFormData] =
-    useState<DatabaseInventoryFormData>(getInitialState());
+    useState<DatabaseInventory>(getInitialState());
   const [isTesting, setIsTesting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [testResult, setTestResult] = useState<{
@@ -106,7 +108,9 @@ export const AddServerModal: FC<AddServerModalProps> = ({
 
       const result = await response.json();
       setTestResult(result);
+      
     } catch (error) {
+      console.error("Connection test failed:", error);
       setTestResult({
         success: false,
         message: "เกิดข้อผิดพลาดระหว่างการเชื่อมต่อ",
@@ -129,7 +133,7 @@ export const AddServerModal: FC<AddServerModalProps> = ({
       onClose();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      alert(`Failed to add server: ${err.message}`);
+      alert(`Failed to add server: ${message}`);
     } finally {
       setIsSubmitting(false);
     }

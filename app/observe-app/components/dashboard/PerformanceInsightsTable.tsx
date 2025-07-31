@@ -644,42 +644,41 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
 
           {/* Query Result */}
           {queryResult !== null && queryResult !== undefined && (
-  <div className="mt-4">
-    <h4 className="text-sm font-medium text-slate-300 mb-2">
-      Query Result:
-    </h4>
-    <pre className="bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-slate-200 overflow-auto max-h-60 whitespace-pre-wrap">
-      {(() => {
-        try {
-          if (
-            typeof queryResult === "object" &&
-            queryResult !== null &&
-            "error" in queryResult
-          ) {
-            const errorMessage = (queryResult as any).error;
-            return (
-              <span className="text-red-300">
-                {typeof errorMessage === "string"
-                  ? errorMessage
-                  : JSON.stringify(errorMessage, null, 2)}
-              </span>
-            );
-          }
+            <div className="mt-4">
+              <h4 className="text-sm font-medium text-slate-300 mb-2">
+                Query Result:
+              </h4>
+              <pre className="bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-slate-200 overflow-auto max-h-60 whitespace-pre-wrap">
+                {(() => {
+                  try {
+                    if (
+                      typeof queryResult === "object" &&
+                      queryResult !== null &&
+                      "error" in queryResult
+                    ) {
+                      const errorMessage = (queryResult as any).error;
+                      return (
+                        <span className="text-red-300">
+                          {typeof errorMessage === "string"
+                            ? errorMessage
+                            : JSON.stringify(errorMessage, null, 2)}
+                        </span>
+                      );
+                    }
 
-          // JSON.stringify ปกติ
-          return JSON.stringify(queryResult, null, 2);
-        } catch (e) {
-          return (
-            <span className="text-red-300">
-              Failed to render result: {(e as Error).message}
-            </span>
-          );
-        }
-      })()}
-    </pre>
-  </div>
-)}
-
+                    // JSON.stringify ปกติ
+                    return JSON.stringify(queryResult, null, 2);
+                  } catch (e) {
+                    return (
+                      <span className="text-red-300">
+                        Failed to render result: {(e as Error).message}
+                      </span>
+                    );
+                  }
+                })()}
+              </pre>
+            </div>
+          )}
         </div>
       )}
 
@@ -729,11 +728,26 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
           </thead>
           <tbody>
             {currentInsights.map((insight, index) => {
-              const insightId =
-                insight.id ||
-                insight.session_id ||
-                insight.spid ||
-                `insight-${index}`;
+              // รวบรวมค่าที่เป็นไปได้ทั้งหมดสำหรับ ID ที่ไม่ซ้ำกัน
+              const potentialIds = [
+                insight.id,
+                insight.session_id,
+                insight.spid,
+              ];
+
+              // ค้นหา ID ที่ไม่ซ้ำกันและถูกต้องตัวแรก โดยกรองค่าที่ไม่พึงประสงค์ออก
+              const foundUniqueId = potentialIds.find(
+                (id) =>
+                  id !== null &&
+                  id !== undefined &&
+                  id !== "" && // กรองสตริงว่างออก
+                  String(id).trim().toLowerCase() !== "n/a" // กรอง "n/a" ทุกรูปแบบ
+              );
+
+              // ใช้ ID ที่พบ หรือ fallback ไปใช้ index หากไม่มี ID ที่ถูกต้อง
+              const insightId = foundUniqueId
+                ? String(foundUniqueId)
+                : `insight-${index}`;
               const sessionId = insight.session_id || insight.spid;
               const displayType =
                 INSIGHT_TYPE_MAP[insight.type] || insight.type || "Query";

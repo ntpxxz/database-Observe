@@ -14,14 +14,15 @@ export function isDbType(value: string): value is DbType {
 // =============================================================================
 // DRIVER INTERFACES
 // =============================================================================
-export interface BaseDriver<TConfig, TPool,> {
+export interface BaseDriver<TConfig, TPool> {
+  executeQuery(arg0: unknown, query: unknown): unknown[] | PromiseLike<unknown[]>;
   connect(config: TConfig): Promise<TPool>;
   disconnect(pool: TPool): Promise<void>;
   listDatabases(pool: TPool): Promise<string[]>;
   getMetrics(pool: TPool): Promise<Partial<Metrics>>;
   getQueryAnalysis(pool: TPool): Promise<QueryAnalysis>;
   getOptimizationSuggestions(pool: TPool): Promise<OptimizationSuggestions>;
-  getProblemQueries(pool: TPool): Promise<any>;
+  getProblemQueries(pool: TPool): Promise<unknown>;
   getPerformanceInsights(pool: TPool): Promise<PerformanceInsight[] | { error: string }>;
   generateInsights?(data: QueryAnalysis): PerformanceInsight[];
 }
@@ -113,7 +114,7 @@ export interface BaseConnectionConfig {
   port?: number;
 }
 export interface DatabaseInventory extends BaseConnectionConfig {
-  inventoryID?: string;
+  inventoryID: string;
   systemName: string;
   serverHost: string;
   port: number;
@@ -123,8 +124,9 @@ export interface DatabaseInventory extends BaseConnectionConfig {
   credentialReference: string;
   databaseName?: string;
   encrypt?: boolean;
-  notes?: string;
-  createdOn?: string;
+  ownerContact: string;
+  purposeNotes?: string;
+  createdDate?: string;
   createdBy?: string;
   lastUpdatedOn?: string;
   lastUpdatedBy?: string;
@@ -188,7 +190,14 @@ export interface QueryAnalysisModalProps {
   onClose: () => void;
   query: PerformanceInsight | null;
 }
-
+export interface InsightsData {
+  runningQueries?: Array<unknown>;
+  slowQueries?: Array<unknown>;
+  blockingQueries?: Array<unknown>;
+  waitStats?: Array<unknown>;
+  deadlocks?: Array<unknown>;
+  tempDbUsage?: Array<unknown>;
+}
 export type InsightType =
   | "running_query"
   | "slow_query"
@@ -199,14 +208,19 @@ export type InsightType =
 
 export interface InsightItem {
   id?: string;
-  session_id?: string;
+  session_id: string | number;
   duration?: number;
   query?: string;
-  // เพิ่ม properties อื่นๆ ที่เกี่ยวข้องกับ insight item เช่น text, start_time, end_time, etc.
+  database?: string;
+  wait_type?: string;
+  resource?: string;
+  count?: number;
+  [key: string]: unknown;
+  type?: InsightType; 
 }
 
 export interface RunningQuery extends InsightItem {
-  session_id: number;
+  session_id: string | number;
   current_query: string;
   total_elapsed_time: number;
   program_name: string;
@@ -216,7 +230,9 @@ export interface RunningQuery extends InsightItem {
 export interface SlowQuery extends InsightItem {
   query_text: string;
   mean_exec_time_ms: number;
-  calls: number;
+  login_name:string
+  duration_ms:number
+  session_id: string | number;
 }
 
 export interface BlockingQuery extends InsightItem {
@@ -260,24 +276,25 @@ export interface HardwareMetric {
 }
 
 
+// In src/types.ts
 export interface QueryAnalysis {
-  runningQueries: RunningQuery[];
-  slowQueries: SlowQuery[];
-  blockingQueries: BlockingQuery[];
-  waitStats: WaitStats[];
-  deadlocks: DeadlockEvent[];
-  tempDbUsage?: HighTempDbUsage[];
+  runningQueries: InsightItem[]; // Change from RunningQuery[]
+  slowQueries: InsightItem[];    // Change from SlowQuery[]
+  blockingQueries: InsightItem[]; // Change from BlockingQuery[]
+  waitStats: InsightItem[];       // Change from WaitStats[]
+  deadlocks: InsightItem[];       // Change from DeadlockEvent[]
+  tempDbUsage: InsightItem[];     // Change from HighTempDbUsage[] (and fix casing)
+  insights?: PerformanceInsight[];
 }
 //
 export interface DatabaseInfo {
   name: string;
   sizeMB: number;
   state: string;
-  recoveryModel: string;
+  recoveryModel: string | undefined;
   compatibilityLevel: string;
   collation: string;
   createdDate: Date;
-  lastBackupDate?: Date;
 }
 export interface DatabaseInventoryWithDetails extends DatabaseInventory {
   databases: DatabaseInfo[];
@@ -323,22 +340,51 @@ export interface DatabaseMetrics {
 export interface OptimizationSuggestions {
   indexSuggestions: unknown[]; // Placeholder, define more specific interface later
   queryRewrites: unknown[]; // Placeholder
+
+  missingIndexes: Array<{
+    impact: number;
+    createStatement: string;
+    tableSchema: string;
+    tableName: string;
+  }>;
+  unusedIndexes: Array<{
+    tableName: string;
+    indexName: string;
+    impact: number;
+    recommendation: string;
+  }>;
+  tableOptimizations: Array<{
+    tableName: string;
+    suggestion: string;
+    priority: 'high' | 'medium' | 'low';
+  }>;
+  fragmentedIndexes:Array<{
+    tableName: string;
+    indexName: string;
+    fragmentationPercentage: number
+    pageCount: number;
+  }>
 }
 
 export interface PerformanceInsight {
+  id: string;
+  type: string;
+  severity: "info" | "warning" | "critical";
   title: string;
-  queryId: string;
-  queryText: string;
-  executionPlan: string;
-  metrics: Metrics;
-  suggestions: OptimizationSuggestions;
-  
-  category: InsightType;
-  details: {
-    [key: string]: DbType
-  ;
+  message: string;
+  timestamp: Date | string;
+  query: string;
+  queryId?: string;
+  executionPlan?: string;
+  metrics?: {
+    durationMs?: number;
+    cpuMs?: number;
+    reads?: number;
+    writes?: number;
   };
-  timestamp: string;
+  sessionId?: string;
+  details?: Record<string, unknown>; // เพิ่ม field นี้
+  
 }
 
 // =============================================================================
@@ -363,6 +409,9 @@ export interface StatItemProps {
 }
 
 export interface HealthStatusPillProps {
+  status: 'Healthy' | 'Warning' | 'Critical' | 'Unknown';
+}
+export interface serverStatus {
   status: 'Healthy' | 'Warning' | 'Critical' | 'Unknown';
 }
 

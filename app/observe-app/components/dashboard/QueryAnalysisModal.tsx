@@ -6,10 +6,12 @@ interface QueryAnalysisModalProps {
   isOpen: boolean;
   onClose: () => void;
   query: PerformanceInsight | null;
+  insight: PerformanceInsight | null; // Assuming insight is part of the query object
 }
 
 export const QueryAnalysisModal: FC<QueryAnalysisModalProps> = ({
   isOpen,
+  
   onClose,
   query,
 }) => {
@@ -40,10 +42,10 @@ export const QueryAnalysisModal: FC<QueryAnalysisModalProps> = ({
           setTimeout(() => {
             let suggestion =
               "No specific suggestion available. Review the query execution plan for performance bottlenecks and ensure appropriate indexes are in place.";
-            if (query.query.toUpperCase().includes("SELECT *")) {
+            if (query.queryId && query.queryId.toUpperCase().includes("SELECT *")) {
               suggestion =
                 "Consider avoiding 'SELECT *' as it can cause full table scans. Specify only the columns you need.";
-            } else if (query.query.toUpperCase().includes("LIKE '%")) {
+            } else if (query.queryId && query.queryId.toUpperCase().includes("LIKE '%")) {
               suggestion =
                 "Using a leading wildcard with LIKE (e.g., LIKE '%value') prevents the use of standard indexes. Consider using a Full-Text Search solution if this is a common pattern.";
             }

@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 interface ServerDetailModalProps {
   isOpen: boolean;
   server: DatabaseInventory | null;
-  insight?: any;
+  insight?: unknown;
   onClose: () => void;
 }
 
@@ -31,7 +31,6 @@ export const ServerDetailModal: FC<ServerDetailModalProps> = ({
 
   const isInsightView = !!insight;
 
-  // รวมข้อมูลที่ต้องแสดงใน Insight View
   const getInsightDetails = (insight: any) => {
     const fallback = insight.details || {};
     return [

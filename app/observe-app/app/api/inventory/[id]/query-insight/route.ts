@@ -4,19 +4,10 @@ import { getSQLConnectionByInventory } from "@/lib/connectionManager";
 import mssqlDriver from "@/lib/drivers/mssqlDriver";
 import mysqlDriver from "@/lib/drivers/mysqlDriver";
 import postgresDriver from "@/lib/drivers/postgresDriver";
-import { ConnectionPool as MSSQLConnectionPool } from "mssql"; // Import actual MSSQL ConnectionPool
-import { Pool as PgNativePool } from "pg"; // Import actual PostgreSQL Pool
-import { Pool as MySQLNativePool } from "mysql2/promise"; // Import actual MySQL Pool from mysql2/promise
 
 import {
   DriverMap,
-  MSSQLPool,
-  MySQLPool, 
-  PostgreSQLPool, 
-  BaseDriver,
-  MSSQLConnectionConfig,
-  MySQLConnectionConfig,
-  PostgreSQLConnectionConfig,
+  
   QueryAnalysis,
 } from "@/types";
 
@@ -53,7 +44,6 @@ export async function GET(
 
     const db = result.recordset[0];
     const rawPool = await getSQLConnectionByInventory(db);
-    // Removed DEBUG console logs from here
 
     if (!rawPool) {
       return NextResponse.json(
@@ -66,27 +56,25 @@ export async function GET(
 
     let rawInsights: QueryAnalysis;
 
-    // rawPool เป็น AnyPool (อ็อบเจกต์ wrapper ที่มีคุณสมบัติ 'type' และ 'pool')
+    // rawPool เป็น AnyPool (wrapper object ที่มี type และ pool)
+    // ส่ง rawPool ทั้งก้อนไปให้ driver โดยตรง
     switch (rawPool.type) {
       case "mssql": {
-        // เปลี่ยน MSSQLPool เป็น MSSQLConnectionPool เพื่อให้ตรงกับประเภทของ (rawPool as MSSQLPool).pool
-        const driver = drivers.MSSQL as unknown as BaseDriver<MSSQLConnectionConfig, MSSQLConnectionPool>;
-        // ส่ง actual MSSQL pool ไปยัง driver
-        rawInsights = await driver.getQueryAnalysis((rawPool as MSSQLPool).pool);
+        const driver = drivers.MSSQL;
+        // ส่ง AnyPool wrapper ไปให้ driver (ไม่ใช่ native pool)
+        rawInsights = await driver.getQueryAnalysis(rawPool);
         break;
       }
       case "postgresql": {
-        // เปลี่ยน PostgreSQLPool เป็น PgNativePool เพื่อให้ตรงกับประเภทของ (rawPool as PostgreSQLPool).pool
-        const driver = drivers.POSTGRES as unknown as BaseDriver<PostgreSQLConnectionConfig, PgNativePool>;
-        // ส่ง actual PostgreSQL pool ไปยัง driver
-        rawInsights = await driver.getQueryAnalysis((rawPool as PostgreSQLPool).pool);
+        const driver = drivers.POSTGRES;
+        // ส่ง AnyPool wrapper ไปให้ driver (ไม่ใช่ native pool)
+        rawInsights = await driver.getQueryAnalysis(rawPool);
         break;
       }
       case "mysql": {
-        // เปลี่ยน MySQLPool เป็น MySQLNativePool เพื่อให้ตรงกับประเภทของ (rawPool as MySQLPool).pool
-        const driver = drivers.MYSQL as unknown as BaseDriver<MySQLConnectionConfig, MySQLNativePool>;
-        // ส่ง actual MySQL pool ไปยัง driver
-        rawInsights = await driver.getQueryAnalysis((rawPool as MySQLPool).pool);
+        const driver = drivers.MYSQL;
+        // ส่ง AnyPool wrapper ไปให้ driver (ไม่ใช่ native pool)
+        rawInsights = await driver.getQueryAnalysis(rawPool);
         break;
       }
       default:

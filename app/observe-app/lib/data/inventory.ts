@@ -1,4 +1,4 @@
-import { queryAppDb } from "@/lib/appDb"; // ใช้ connection จากไฟล์ static (สำหรับ IT_ManagementDB)
+import { queryAppDb } from "@/lib/appDb"; 
 import { DatabaseInventory } from "@/types";
 
 /**
@@ -22,16 +22,23 @@ export async function getInventoryById(
   const row = result.recordset[0];
 
   return {
-    id: row.id,
+    inventoryID: row.id,
     serverHost: row.serverHost,
     port: row.port || 1433,
     databaseName: row.databaseName,
     databaseType: row.databaseType || "mssql",
     connectionUsername: row.connectionUsername,
-    connectionPassword: row.credentialReference,
+    credentialReference: row.credentialReference,
     systemName: row.systemName,
     zone: row.zone,
     ownerContact: row.ownerContact,
     purposeNotes: row.purposeNotes,
+    createdBy: row.createdBy,
+    createdDate: row.createdDate,
+    lastUpdatedOn: row.lastUpdatedOn,
+    lastUpdatedBy: row.lastUpdatedBy,
+    status: row.status || "Active",
+    encrypt: row.encrypt || false,
   };
 }
+

@@ -20,8 +20,6 @@ const drivers: DriverMap = {
   MYSQL: mysqlDriver,
 };
 
-
-
 const VALID_ANALYSIS_LEVELS = ["basic", "detailed", "full"] as const;
 type AnalysisLevel = (typeof VALID_ANALYSIS_LEVELS)[number];
 
@@ -30,7 +28,6 @@ async function processRequest(
   level: AnalysisLevel,
   driver: BaseDriver<any, any>, 
   pool: AnyPool,
-
 ): Promise<
   Partial<Metrics> | QueryAnalysis | (QueryAnalysis & OptimizationSuggestions)
 > {
@@ -75,7 +72,6 @@ export async function GET(
 
   let targetPool: AnyPool | undefined;
   let driver: BaseDriver<any, any> | undefined;
-
 
   try {
     // --- 1. Validate Input ---
@@ -157,8 +153,6 @@ export async function GET(
       },
     });
   } catch (error: unknown) {
-
-   
     const message = error instanceof Error ? error.message : "Unknown error";
     const duration = Date.now() - startTime;
     console.error(
@@ -167,8 +161,10 @@ export async function GET(
     );
     return NextResponse.json(
       {
-        error: "Internal server error", datails:message},
-        { status: 500 },     
+        error: "Internal server error", 
+        details: message
+      },
+      { status: 500 },     
     );
   } finally {
     // --- 6. Cleanup ---
