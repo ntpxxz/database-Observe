@@ -18,7 +18,6 @@ import {
   X,
   Download,
   Play,
-  Square,
   Terminal,
   Bot,
 } from "lucide-react";
@@ -29,7 +28,6 @@ interface PerformanceInsightsTableProps {
   insights: any[];
   serverName?: string;
   isLoading?: boolean;
-  onKillSession?: (sessionId: string) => Promise<void>;
   onExecuteQuery?: (query: string) => Promise<any>;
   onAskAi?: (query: string) => Promise<void>;
 }
@@ -223,7 +221,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   insights,
   serverName,
   isLoading = false,
-  onKillSession,
   onExecuteQuery,
   onAskAi,
 }) => {
@@ -235,7 +232,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   const [manualQuery, setManualQuery] = useState("");
   const [queryResult, setQueryResult] = useState<unknown>(null);
   const [isExecutingQuery, setIsExecutingQuery] = useState(false);
-  const [killingSession, setKillingSession] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const ROWS_PER_PAGE = 10;
@@ -365,33 +361,19 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
         prev.field === field && prev.direction === "asc" ? "desc" : "asc",
     }));
   };
+  // Handle Execute session
 
-  // Handle session kill
-  const handleKillSession = async (sessionId: string) => {
-    if (!onKillSession) return;
-
-    if (window.confirm(`Are you sure you want to kill session ${sessionId}?`)) {
-      try {
-        setKillingSession(sessionId);
-        await onKillSession(sessionId);
-        alert(`Session ${sessionId} killed successfully`);
-      } catch (error) {
-        alert(`Failed to kill session ${sessionId}: ${error}`);
-      } finally {
-        setKillingSession(null);
-      }
-    }
-  };
-
-  // Handle manual query execution
   const handleExecuteQuery = async () => {
-    if (!onExecuteQuery || !manualQuery.trim()) return;
+    if (!onExecuteQuery || !manualQuery.trim()) {
+      
+      return;    }
 
     try {
       setIsExecutingQuery(true);
       const result = await onExecuteQuery(manualQuery);
       setQueryResult(result);
     } catch (error) {
+      console.error('Error executing query:', error);
       setQueryResult({ error: String(error) });
     } finally {
       setIsExecutingQuery(false);
@@ -805,26 +787,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                       >
                         Details
                       </button>
-
-                      {sessionId && onKillSession && (
-                        <button
-                          onClick={() => handleKillSession(sessionId)}
-                          disabled={killingSession === sessionId}
-                          className="text-red-300 hover:text-red-200 font-medium py-1 px-2 rounded text-xs hover:bg-red-500/10 transition-colors disabled:opacity-50 flex items-center gap-1"
-                        >
-                          {killingSession === sessionId ? (
-                            <>
-                              <div className="animate-spin rounded-full h-3 w-3 border-b border-red-300"></div>
-                              Killing...
-                            </>
-                          ) : (
-                            <>
-                              <Square size={12} />
-                              Kill
-                            </>
-                          )}
-                        </button>
-                      )}
+                    
                     </div>
                   </td>
                 </tr>

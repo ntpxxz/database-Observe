@@ -105,3 +105,30 @@ export async function updateInventoryById(id: string, data: DatabaseInventory) {
     },
   );
 }
+export async function queryDatabaseDirect(
+  
+  dbConfig: {
+    serverHost: string;
+    port?: number;
+    connectionUsername: string;
+    credentialReference: string;
+  },
+  query: string
+) {
+  const config: sql.config = {
+    user: dbConfig.connectionUsername,
+    password: dbConfig.credentialReference,
+    server: dbConfig.serverHost,
+    port: dbConfig.port || 1433,
+    options: {
+      encrypt: false,
+      trustServerCertificate: true,
+    },
+  };
+
+  const pool = await sql.connect(config);
+  const result = await pool.request().query(query);
+  await pool.close();
+
+  return result;
+}

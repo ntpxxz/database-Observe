@@ -1,3 +1,4 @@
+'use client';
 import React, { FC, useState } from "react";
 import {
   Server as ServerIcon,
@@ -66,7 +67,7 @@ export const Sidebar: FC<SidebarProps> = ({
 
             {openZones[zone] &&
               serverList.map((server) => {
-                const id = server.inventoryID.toString();
+                const id = server.inventoryID?.toString?.() ?? "unknown";
                 const isActive =
                   activeServer?.inventoryID === server.inventoryID;
 

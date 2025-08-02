@@ -38,3 +38,4 @@ export function isReadOnlySQL(query: string): boolean {
 
   return isSafeStart && !hasDanger;
 }
+

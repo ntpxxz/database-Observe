@@ -18,6 +18,7 @@ import toast from "react-hot-toast";
 import { isReadOnlySQL } from "@/lib/utils";
 import { SQLTuningModal } from "../modals/SQLTuningModal";
 import { askAiForOptimization } from "@/lib/askAiForOptimization";
+import TableList from "./TableList";
 
 // Types
 type TabType = "performance" | "insights" | "hardware";
@@ -142,13 +143,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   const [selectedQuery, setSelectedQuery] = useState("");
   const [aiSuggestion, setAiSuggestion] = useState("");
 
-  const serverStatus = useMemo((): ServerStatus => {
-    if (!metrics?.kpi) return "unknown";
-    const { cpu = 0, memory = 0 } = metrics.kpi;
-    if (cpu > 90 || memory > 90) return "critical";
-    if (cpu > 70 || memory > 70) return "warning";
-    return "healthy";
-  }, [metrics]);
+
 
   const totalMemoryInMb = useMemo(() => {
     if (!metrics?.hardware?.databaseMetrics) return null;
@@ -163,7 +158,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     
     // ถ้า insights เป็น array (กรณีเก่า)
     if (Array.isArray(insights)) {
-      return insights.map((insight, index) => ({ ...insight, type: "performance_insight" }));
+      return insights.map((insight) => ({ ...insight, type: "performance_insight" }));
     }
     
     // ถ้า insights เป็น single object ที่มี properties ต่างๆ
@@ -212,27 +207,6 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     }
   };
 
-  const handleKillSession = async (sessionId: string) => {
-    try {
-      const res = await fetch(`/api/inventory/${server.inventoryID}/kill-session`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || "Kill session failed");
-      }
-
-      toast.success(`✅ Session ${sessionId} killed successfully`);
-      await handleRefresh("insights");
-    } catch (err: any) {
-      const message = err instanceof Error ? err.message : String(err);
-      toast.error(`❌ Failed to kill session ${sessionId}: ${message}`);
-    }
-  };
-
   const handleExecuteManualQuery = async (query: string) => {
     if (!query || !server.inventoryID) {
       toast.error("❌ Missing query or Inventory ID");
@@ -274,6 +248,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     try {
       const suggestion = await askAiForOptimization(query);
       setAiSuggestion(suggestion);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setAiSuggestion("❌ Failed to get suggestion.");
     }
@@ -321,10 +296,12 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
         <DatabaseTableView 
           databaseInfo={metrics.databaseInfo} 
           inventoryID={server.inventoryID} 
+        
         />
+        
       ) : (
         <p className="text-slate-500 text-sm">No database info available.</p>
-      )}
+      )}     
     </div>
   );
 
@@ -352,7 +329,6 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
           insights={flattenedInsights}
           serverName={server.systemName}
           isLoading={insightsLoading}
-          onKillSession={handleKillSession}
           onExecuteQuery={handleExecuteManualQuery}
           onAskAi={handleAskAi}
         />

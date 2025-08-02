@@ -88,7 +88,6 @@ interface Driver {
   analyzeDatabaseHealth?: (pool: AnyPool) => Promise<Record<string, unknown>>; // Make optional
   getProblemQueries: (pool: AnyPool) => Promise<unknown>; // Changed return type to match BaseDriver
   getPerformanceInsights: (pool: AnyPool) => Promise<PerformanceInsight[] | { error: string }>;
-  killSession?: (pool: ConnectionPool, sessionId: string) => Promise<void>; // Make optional
   executeQuery?: (pool: sql.ConnectionPool, query: string) => Promise<unknown[]>; // Make optional
 }
 
@@ -679,11 +678,6 @@ const mssqlDriver = {
         return { error: `Failed to retrieve performance insights: ${error instanceof Error ? error.message : String(error)}` };
     }
   },
-
-  async killSession(pool: ConnectionPool, sessionId: string): Promise<void> {
-    await pool.request().query(`KILL ${sessionId}`);
-  },
-
   async executeQuery(poolWrapper: sql.ConnectionPool, query: string): Promise<unknown[]> {
     try {
       const request = poolWrapper.request();

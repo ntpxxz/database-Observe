@@ -20,12 +20,9 @@ const drivers: DriverMap = {
 export async function POST(req: NextRequest) {
   let targetPool: AnyPool | undefined;
   let driver: BaseDriver<any, any> | undefined;
-  let inventoryId: string | undefined; // Declare at function scope for error handling
 
   try {
-    const requestBody = await req.json();
-    const { inventoryId: parsedInventoryId, query } = requestBody;
-    inventoryId = parsedInventoryId; // Store for error handling
+    const { inventoryId, query } = await req.json();
 
     // ✅ Validate input
     if (!query || !inventoryId) {
@@ -52,8 +49,7 @@ export async function POST(req: NextRequest) {
         Port as port, 
         DatabaseType as databaseType, 
         ConnectionUsername as connectionUsername, 
-        CredentialReference as credentialReference,
-        DatabaseName as databaseName
+        CredentialReference as credentialReference
       FROM IT_ManagementDB.dbo.DatabaseInventory 
       WHERE InventoryID = @id`,
       { id: inventoryId },
@@ -130,7 +126,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("[Manual Query Error]", {
-      inventoryId, // Now using the parsed inventoryId variable
+      inventoryId: req.body?.inventoryId,
       error: message,
       stack: error instanceof Error ? error.stack : undefined
     });

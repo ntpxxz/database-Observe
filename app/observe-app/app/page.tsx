@@ -14,7 +14,6 @@ import {
   PerformanceInsight,
 } from "@/types";
 import { AlertCircle } from "lucide-react";
-import { DatabaseTableView } from "@/components/dashboard/DatabaseTableView";
 
 // Define hardware metrics interface
 interface HardwareMetrics {
@@ -59,12 +58,13 @@ const useInventoryManager = () => {
   return { servers, isLoading, error, refreshServers: fetchServers };
 };
 
-const REFRESH_INTERVAL_MS = 60000;
+
 
 const useDatabaseMetrics = (server: DatabaseInventory | null) => {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
 
   const fetchMetrics = useCallback(async () => {
     if (!server?.inventoryID) return;
@@ -89,10 +89,9 @@ const useDatabaseMetrics = (server: DatabaseInventory | null) => {
   useEffect(() => {
     if (server) {
       fetchMetrics();
-      const intervalId = setInterval(fetchMetrics, REFRESH_INTERVAL_MS);
-      return () => clearInterval(intervalId);
+      
     }
-  }, [server, fetchMetrics]);
+  }, [server]);
 
   return { metrics, isLoading, error, refreshMetrics: fetchMetrics };
 };
@@ -118,9 +117,8 @@ const useHardwareMetrics = (server: DatabaseInventory | null) => {
   useEffect(() => {
     if (!server) return;
     fetchHardware();
-    const intervalId = setInterval(fetchHardware, REFRESH_INTERVAL_MS);
-    return () => clearInterval(intervalId);
-  }, [server, fetchHardware]);
+   
+  }, [server]);
 
   return { hardware, hardwareError, refreshHardware: fetchHardware };
 };
