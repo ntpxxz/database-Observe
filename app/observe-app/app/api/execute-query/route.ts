@@ -124,9 +124,8 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : "Unknown eor";
     console.error("[Manual Query Error]", {
-      inventoryId: req.body?.inventoryId,
       error: message,
       stack: error instanceof Error ? error.stack : undefined
     });

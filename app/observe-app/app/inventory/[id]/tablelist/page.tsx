@@ -1,78 +1,79 @@
+// app/inventory/[id]/tablelist/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Database, Table } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-// A mock interface for the API response
 interface TableListResponse {
   tables: string[];
 }
 
 export default function TableListPage() {
-  // We're using a hardcoded value for the app id and database name
-  // since the next/navigation hooks are not available in this environment.
-  const [id] = useState("some-app-id");
-  const [dbName] = useState("example-db");
-  
+  const params = useParams();
+  const id = params?.id as string;
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const dbName = searchParams.get("db");
   const [tables, setTables] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    // We'll simulate fetching data from a hardcoded endpoint
-    // since the next/navigation hooks are not available.
+    if (!dbName) {
+      setError("Missing database name in query string");
+      setLoading(false);
+      return;
+    }
+
     const fetchTables = async () => {
       try {
         setLoading(true);
-        // This is a placeholder fetch call. You will need to replace this
-        // with your actual API endpoint or data source.
-        // For now, we'll simulate a fetch with dummy data.
-        const response = await new Promise<TableListResponse>((resolve) => {
-          setTimeout(() => {
-            resolve({ tables: ["users", "products", "orders", "analytics"] });
-          }, 1500);
-        });
+        const response = await fetch(
+          `/api/inventory/tablelist?id=${encodeURIComponent(id)}&db=${encodeURIComponent(dbName)}`
+        );
 
-        setTables(response.tables || []);
+        if (!response.ok) {
+          throw new Error(
+            `HTTP ${response.status}: Failed to fetch table list`
+          );
+        }
+
+        const data: TableListResponse = await response.json();
+        setTables(data.tables || []);
       } catch (err) {
         console.error("Fetch tables error:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
+        setError(
+          err instanceof Error ? err.message : "An unknown error occurred"
+        );
       } finally {
         setLoading(false);
       }
     };
 
     fetchTables();
-  }, [id, dbName]);
+  }, [params.id, dbName, id]);
 
   const handleBack = () => {
-    // Since we don't have Next.js router, we'll use the browser's history API
-    window.history.back();
-  };
-
-  const handleTableClick = (tableName: string) => {
-    // This is where you would add your navigation logic, e.g., to a table details page.
-    // For now, we'll just log it to the console.
-    console.log(`Navigating to table: ${tableName}`);
-    // Example navigation for a different environment: window.location.href = `/inventory/${id}/table/${tableName}`;
+    router.back();
   };
 
   if (!dbName) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white p-8 sm:p-12 lg:p-16">
-        <div className="container mx-auto max-w-2xl">
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-8 text-center shadow-lg">
-            <div className="flex flex-col items-center gap-4 text-red-400">
-              <Database size={48} className="animate-pulse" />
-              <h1 className="text-2xl font-bold">Error</h1>
+      <div className="min-h-screen bg-slate-950 text-white">
+        <div className="container mx-auto px-6 py-8">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6">
+            <div className="flex items-center gap-3 text-red-400">
+              <Database size={20} />
+              <h1 className="text-lg font-semibold">Error</h1>
             </div>
-            <p className="mt-4 text-red-300">
-              The database name is missing from the URL. Please go back and select a database to view its tables.
+            <p className="mt-2 text-red-300">
+              Missing database name in query string. Please navigate back and
+              try again.
             </p>
             <Button
               onClick={handleBack}
-              className="mt-6 bg-red-500/20 hover:bg-red-500/30 transition-colors duration-200"
+              className="mt-4 bg-red-500/20 hover:bg-red-500/30"
             >
               <ArrowLeft size={16} className="mr-2" />
               Go Back
@@ -84,28 +85,29 @@ export default function TableListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-6 sm:p-8 md:p-12">
-      <div className="container mx-auto">
+    <div className="min-h-screen bg-slate-950 text-white">
+      <div className="container mx-auto px-6 py-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 sm:mb-12">
-          <div className="flex items-center gap-4 mb-4 sm:mb-0">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
             <Button
               onClick={handleBack}
               variant="outline"
               size="sm"
-              className="border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
+              className="border-slate-700 hover:bg-slate-800"
             >
               <ArrowLeft size={16} className="mr-2" />
               Back
             </Button>
             <div className="flex items-center gap-3">
-              <Database className="text-sky-400" size={32} />
+              <Database className="text-sky-400" size={24} />
               <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
+                <h1 className="text-2xl font-bold text-white">
                   Database Tables
                 </h1>
-                <p className="text-slate-400 text-sm sm:text-base">
-                  Viewing tables for: <span className="text-sky-400 font-bold">{dbName}</span>
+                <p className="text-slate-400">
+                  Tables in{" "}
+                  <span className="text-sky-400 font-medium">{dbName}</span>
                 </p>
               </div>
             </div>
@@ -113,51 +115,52 @@ export default function TableListPage() {
         </div>
 
         {/* Content */}
-        <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
+        <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-4 border-b-sky-500 mx-auto mb-6" />
-              <p className="text-slate-400 text-lg">Loading tables...</p>
+            <div className="p-8 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto mb-4" />
+              <p className="text-slate-400">Loading tables...</p>
             </div>
           ) : error ? (
-            <div className="p-12">
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-8 text-center">
-                <div className="flex flex-col items-center gap-4 text-red-400 mb-6">
-                  <Database size={48} />
-                  <h2 className="text-2xl font-bold">Error Loading Tables</h2>
+            <div className="p-8">
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6">
+                <div className="flex items-center gap-3 text-red-400 mb-3">
+                  <Database size={20} />
+                  <h2 className="text-lg font-semibold">
+                    Error Loading Tables
+                  </h2>
                 </div>
-                <p className="text-red-300 mb-6">{error}</p>
+                <p className="text-red-300 mb-4">{error}</p>
                 <Button
                   onClick={() => window.location.reload()}
-                  className="bg-red-500/20 hover:bg-red-500/30 transition-colors duration-200"
+                  className="bg-red-500/20 hover:bg-red-500/30"
                 >
                   Try Again
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="p-8">
-              <div className="flex items-center gap-4 mb-8">
-                <Table className="text-sky-400" size={24} />
-                <h2 className="text-2xl font-bold text-white">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <Table className="text-sky-400" size={20} />
+                <h2 className="text-xl font-semibold text-white">
                   Tables ({tables.length})
                 </h2>
               </div>
 
               {tables.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {tables.map((table, idx) => (
                     <div
                       key={idx}
-                      onClick={() => handleTableClick(table)}
-                      className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-5 hover:bg-slate-800 hover:border-sky-500/50 transition-all duration-200 cursor-pointer group shadow-md hover:shadow-lg transform hover:-translate-y-1"
+                      className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-4 hover:bg-slate-800 hover:border-slate-600 transition-all duration-200 cursor-pointer group"
                     >
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3">
                         <Table
-                          size={20}
+                          size={16}
                           className="text-slate-400 group-hover:text-sky-400 transition-colors"
                         />
-                        <span className="text-slate-300 text-lg group-hover:text-white transition-colors font-semibold">
+                        <span className="text-slate-300 group-hover:text-white transition-colors font-medium">
                           {table}
                         </span>
                       </div>
@@ -166,14 +169,13 @@ export default function TableListPage() {
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <div className="flex flex-col items-center gap-4 mb-6">
-                    <Table size={64} className="text-slate-600" />
-                    <h3 className="text-xl font-bold text-slate-400">
-                      No Tables Found
-                    </h3>
-                  </div>
-                  <p className="text-slate-500 max-w-sm mx-auto">
-                    This database does not contain any tables, or you do not have permission to view them.
+                  <Table size={48} className="text-slate-600 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-slate-400 mb-2">
+                    No Tables Found
+                  </h3>
+                  <p className="text-slate-500">
+                    This database dont contain any tables, or you have
+                    permission to view them.
                   </p>
                 </div>
               )}
