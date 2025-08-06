@@ -9,20 +9,14 @@ COPY next.config.ts ./
 
 RUN npm install
 
-# === Builder stage
-FROM node:23.11.0-alpine AS builder
+FROM node:20-slim AS builder
 WORKDIR /app
-
 COPY --from=deps /app ./
 COPY . .
-
 RUN npm run build
 
-# === Production runtime
-FROM node:23.11.0-alpine AS runner
+FROM node:20-slim AS runner
 WORKDIR /app
-
 COPY --from=builder /app ./
-
 EXPOSE 3000
 CMD ["npm", "start"]

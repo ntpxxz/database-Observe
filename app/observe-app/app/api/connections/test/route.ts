@@ -12,7 +12,7 @@ import postgresDriver from '@/lib/drivers/postgresDriver';
 import mysqlDriver from '@/lib/drivers/mysqlDriver';
 import mssqlDriver from '@/lib/drivers/mssqlDriver';
 
-const TEST_CONNECTION_TIMEOUT = 15000;
+const TEST_CONNECTION_TIMEOUT = 60000;
 
 export async function POST(request: NextRequest) {
   let targetPool: AnyPool | undefined;
@@ -203,7 +203,7 @@ function createMySQLConnectionConfig(body: ServerFormData): MySQLConnectionConfi
     waitForConnections: true,
     queueLimit: 0,
     connectTimeout: TEST_CONNECTION_TIMEOUT,
-    idleTimeout: 30000,
+    idleTimeout: 60000,
     // ssl: // หากต้องการใช้ SSL สามารถเพิ่ม db.encrypt หรือ body.ssl ที่นี่
   };
 }

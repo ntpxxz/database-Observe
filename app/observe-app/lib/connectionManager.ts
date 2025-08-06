@@ -1,11 +1,10 @@
-// lib/connectionManager.ts
+
 import { ConnectionPool as MSSQLConnectionPool, config as MSSQLNativeConfig } from "mssql";
 import { Pool as PgPool, PoolConfig as PgNativeConfig } from "pg";
 import mysql, { PoolOptions as MySQLNativeConfig } from "mysql2/promise";
 import {
   AnyPool,
   DatabaseInventory,
-
   MSSQLPool,
   PostgreSQLPool,
   MySQLPool,

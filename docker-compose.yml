@@ -65,7 +65,7 @@ services:
       context: ./app/observe-app
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3000:3090"
     volumes:
       - ./app/observe-app:/app
     working_dir: /app

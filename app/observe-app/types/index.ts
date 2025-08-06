@@ -284,7 +284,7 @@ export interface QueryAnalysis {
   waitStats: InsightItem[];       // Change from WaitStats[]
   deadlocks: InsightItem[];       // Change from DeadlockEvent[]
   tempDbUsage: InsightItem[];     // Change from HighTempDbUsage[] (and fix casing)
-  insights?: PerformanceInsight[];
+  insights: PerformanceInsight[];
 }
 //
 export interface DatabaseInfo {

@@ -18,15 +18,13 @@ import toast from "react-hot-toast";
 import { isReadOnlySQL } from "@/lib/utils";
 import { SQLTuningModal } from "../modals/SQLTuningModal";
 import { askAiForOptimization } from "@/lib/askAiForOptimization";
-import TableList from "./TableList";
 
 // Types
 type TabType = "performance" | "insights" | "hardware";
-type ServerStatus = "healthy" | "warning" | "critical" | "unknown";
 
 interface InsightItem {
   type: string;
-  [key: string]: any;
+  [key: string]: unknown; // Flexible properties for different insight types
 }
 
 interface ServerDetailViewProps {

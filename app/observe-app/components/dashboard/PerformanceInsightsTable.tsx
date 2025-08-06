@@ -730,7 +730,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
               const insightId = foundUniqueId
                 ? String(foundUniqueId)
                 : `insight-${index}`;
-              const sessionId = insight.session_id || insight.spid;
               const displayType =
                 INSIGHT_TYPE_MAP[insight.type] || insight.type || "Query";
               const queryText = extractQueryText(insight);

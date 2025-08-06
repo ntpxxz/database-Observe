@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env PORT=3090 next dev",
+    "dev": "cross-env PORT=3080 next dev",
     "build": "next build",
     "start": "cross-env PORT=3090 next start",
     "lint": "next lint"

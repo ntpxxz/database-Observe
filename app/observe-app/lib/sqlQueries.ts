@@ -322,6 +322,124 @@ GROUP BY
 ORDER BY 
   sizeMB DESC;
 ;`,
+
+
+MSSQL: {
+  listTables: `
+    SELECT name, type
+    FROM sys.objects
+    WHERE type IN ('U', 'V')
+  `,
+  listRelations: `
+    SELECT 
+      fk.name AS constraint_name,
+      OBJECT_NAME(fk.parent_object_id) AS from_table,
+      COL_NAME(fc.parent_object_id, fc.parent_column_id) AS from_column,
+      OBJECT_NAME(fk.referenced_object_id) AS to_table,
+      COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS to_column
+    FROM sys.foreign_keys AS fk
+    INNER JOIN sys.foreign_key_columns AS fc
+      ON fk.object_id = fc.constraint_object_id
+  `
+},
+
+POSTGRES: {
+  listTables: `
+    SELECT table_name as name, table_type as type
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+  `,
+  listRelations: `
+    SELECT
+      tc.table_name AS from_table,
+      kcu.column_name AS from_column,
+      ccu.table_name AS to_table,
+      ccu.column_name AS to_column
+    FROM 
+      information_schema.table_constraints AS tc 
+      JOIN information_schema.key_column_usage AS kcu
+        ON tc.constraint_name = kcu.constraint_name
+      JOIN information_schema.constraint_column_usage AS ccu
+        ON ccu.constraint_name = tc.constraint_name
+    WHERE constraint_type = 'FOREIGN KEY'
+  `
+},
+
+MYSQL: {
+  listTables: `
+    SELECT TABLE_NAME as name, TABLE_TYPE as type
+    FROM INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_SCHEMA = DATABASE()
+  `,
+  listRelations: `
+    SELECT 
+      TABLE_NAME AS from_table,
+      COLUMN_NAME AS from_column,
+      REFERENCED_TABLE_NAME AS to_table,
+      REFERENCED_COLUMN_NAME AS to_column
+    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+    WHERE REFERENCED_TABLE_NAME IS NOT NULL
+  `
+}
+
+
 };
+
+export const PROBLEMATIC_MSSQL_WAIT_TYPES = new Set<string>([
+  "CXPACKET",
+  "CXCONSUMER",
+  "LATCH_EX",
+  "LATCH_SH",
+  "LOGMGR_QUEUE",
+  "SOS_SCHEDULER_YIELD",
+  "PAGEIOLATCH_SH",
+  "PAGEIOLATCH_EX",
+  "ASYNC_NETWORK_IO",
+  "WRITELOG",
+  "THREADPOOL",
+  "RESOURCE_SEMAPHORE",
+]);
+
+// Postgres: ใช้ชื่อกลุ่มที่มักชี้ปัญหา (best-effort; ปรับเพิ่มได้)
+export const PROBLEMATIC_POSTGRES_WAIT_EVENTS = new Set<string>([
+  // ประเภทกว้าง ๆ ที่บ่งชี้ contention/IO
+  "LWLock",
+  "BufferPin",
+  "BufferIO",
+  "Lock",
+  "IO",
+  // รายการ event ที่เจอได้บ่อยว่าเกี่ยว IO/WAL
+  "DataFileRead",
+  "DataFileWrite",
+  "WALWrite",
+  "WALSync",
+  // ถ้า query ของคุณคืนเป็น wait_event แทนประเภท ให้รองรับด้วย
+  "ClientRead",
+  "ClientWrite",
+  "Extension",
+]);
+
+/** ฟังก์ชันช่วยกรอง wait จาก engine ต่างๆ */
+export function filterProblematicWaits(
+  engine: "mssql" | "postgresql" | "mysql",
+  waitStats: any[] = []
+): any[] {
+  if (!Array.isArray(waitStats) || waitStats.length === 0) return [];
+  if (engine === "mssql") {
+    return waitStats.filter((w) =>
+      PROBLEMATIC_MSSQL_WAIT_TYPES.has(String(w.wait_type || w.title || "").toUpperCase())
+    );
+  }
+  if (engine === "postgresql") {
+    return waitStats.filter((w) => {
+      const key = String(w.wait_type || w.title || w.event || w.wait_event || "").trim();
+      // ตัดช่องว่าง/ขึ้นต้น/ตามด้วย เพื่อความ robust
+      return PROBLEMATIC_POSTGRES_WAIT_EVENTS.has(key);
+    });
+  }
+  // mysql: ไม่มี DMV wait แบบ MSSQL/PG — ซ่อนไป
+  return [];
+}
+
 
 export type SqlQueries = typeof SQL_QUERIES;
