@@ -324,63 +324,133 @@ ORDER BY
 ;`,
 
 
-MSSQL: {
-  listTables: `
-    SELECT name, type
-    FROM sys.objects
-    WHERE type IN ('U', 'V')
-  `,
-  listRelations: `
-    SELECT 
-      fk.name AS constraint_name,
-      OBJECT_NAME(fk.parent_object_id) AS from_table,
-      COL_NAME(fc.parent_object_id, fc.parent_column_id) AS from_column,
-      OBJECT_NAME(fk.referenced_object_id) AS to_table,
-      COL_NAME(fc.referenced_object_id, fc.referenced_column_id) AS to_column
-    FROM sys.foreign_keys AS fk
-    INNER JOIN sys.foreign_key_columns AS fc
-      ON fk.object_id = fc.constraint_object_id
-  `
-},
 
-POSTGRES: {
-  listTables: `
-    SELECT table_name as name, table_type as type
-    FROM information_schema.tables
-    WHERE table_schema = 'public'
-  `,
-  listRelations: `
-    SELECT
-      tc.table_name AS from_table,
-      kcu.column_name AS from_column,
-      ccu.table_name AS to_table,
-      ccu.column_name AS to_column
-    FROM 
-      information_schema.table_constraints AS tc 
-      JOIN information_schema.key_column_usage AS kcu
-        ON tc.constraint_name = kcu.constraint_name
-      JOIN information_schema.constraint_column_usage AS ccu
-        ON ccu.constraint_name = tc.constraint_name
-    WHERE constraint_type = 'FOREIGN KEY'
-  `
-},
+  MSSQL: {
+    listTables: `
+      WITH row_counts AS (
+        SELECT p.object_id, SUM(p.row_count) AS row_count
+        FROM sys.dm_db_partition_stats AS p
+        WHERE p.index_id IN (0, 1)      -- heap + clustered index
+        GROUP BY p.object_id
+      )
+      SELECT
+        t.TABLE_SCHEMA         AS schema_name,
+        t.TABLE_NAME           AS name,
+        t.TABLE_TYPE           AS table_type,
+        COUNT(c.COLUMN_NAME)   AS column_count,
+        COALESCE(rc.row_count, 0) AS row_count
+      FROM INFORMATION_SCHEMA.TABLES t
+      LEFT JOIN INFORMATION_SCHEMA.COLUMNS c
+        ON  c.TABLE_SCHEMA = t.TABLE_SCHEMA
+        AND c.TABLE_NAME   = t.TABLE_NAME
+      LEFT JOIN row_counts rc
+        ON rc.object_id = OBJECT_ID(QUOTENAME(t.TABLE_SCHEMA) + '.' + QUOTENAME(t.TABLE_NAME))
+      WHERE t.TABLE_TYPE IN ('BASE TABLE','VIEW')
+      GROUP BY t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, rc.row_count
+      ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME;
+    `,
+    listRelations: `
+      SELECT
+        fk.name                     AS constraint_name,
+        sch1.name                   AS from_schema,
+        tab1.name                   AS from_table,
+        col1.name                   AS from_column,
+        sch2.name                   AS to_schema,
+        tab2.name                   AS to_table,
+        col2.name                   AS to_column
+      FROM sys.foreign_keys fk
+      JOIN sys.foreign_key_columns fkc 
+           ON fk.object_id = fkc.constraint_object_id
+      JOIN sys.tables  tab1 ON tab1.object_id = fkc.parent_object_id
+      JOIN sys.columns col1 ON col1.object_id = fkc.parent_object_id AND col1.column_id = fkc.parent_column_id
+      JOIN sys.tables  tab2 ON tab2.object_id = fkc.referenced_object_id
+      JOIN sys.columns col2 ON col2.object_id = fkc.referenced_object_id AND col2.column_id = fkc.referenced_column_id
+      JOIN sys.schemas sch1 ON sch1.schema_id = tab1.schema_id
+      JOIN sys.schemas sch2 ON sch2.schema_id = tab2.schema_id
+      ORDER BY constraint_name, from_schema, from_table;
+    `,
+  },
 
-MYSQL: {
-  listTables: `
-    SELECT TABLE_NAME as name, TABLE_TYPE as type
-    FROM INFORMATION_SCHEMA.TABLES
-    WHERE TABLE_SCHEMA = DATABASE()
-  `,
-  listRelations: `
-    SELECT 
-      TABLE_NAME AS from_table,
-      COLUMN_NAME AS from_column,
-      REFERENCED_TABLE_NAME AS to_table,
-      REFERENCED_COLUMN_NAME AS to_column
-    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-    WHERE REFERENCED_TABLE_NAME IS NOT NULL
-  `
-}
+
+  POSTGRES: {
+    // ค่าประมาณที่เร็ว (ใช้ pg_class.reltuples) + ผูก schema ถูกต้อง
+    listTables: `
+      SELECT 
+        t.table_schema                   AS schema_name,
+        t.table_name                     AS name,
+        t.table_type,
+        COUNT(c.column_name)             AS column_count,
+        COALESCE(cls.reltuples::bigint, 0) AS row_count
+      FROM information_schema.tables t
+      LEFT JOIN information_schema.columns c
+        ON  c.table_schema = t.table_schema
+        AND c.table_name   = t.table_name
+      LEFT JOIN pg_class cls
+        ON  cls.relname = t.table_name
+        AND cls.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname = t.table_schema)
+      WHERE t.table_schema NOT IN ('pg_catalog','information_schema')
+        AND t.table_type IN ('BASE TABLE','VIEW')
+      GROUP BY t.table_schema, t.table_name, t.table_type, cls.reltuples
+      ORDER BY t.table_schema, t.table_name;
+    `,
+    listRelations: `
+      SELECT
+        con.conname        AS constraint_name,
+        sch1.nspname       AS from_schema,
+        src_tab.relname    AS from_table,
+        src_col.attname    AS from_column,
+        sch2.nspname       AS to_schema,
+        tgt_tab.relname    AS to_table,
+        tgt_col.attname    AS to_column
+      FROM pg_constraint con
+      JOIN pg_class src_tab ON src_tab.oid = con.conrelid
+      JOIN pg_class tgt_tab ON tgt_tab.oid = con.confrelid
+      JOIN pg_namespace sch1 ON sch1.oid = src_tab.relnamespace
+      JOIN pg_namespace sch2 ON sch2.oid = tgt_tab.relnamespace
+      JOIN LATERAL unnest(con.conkey)  WITH ORDINALITY AS src(attnum, ord) ON TRUE
+      JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS tgt(attnum, ord) ON TRUE AND src.ord = tgt.ord
+      JOIN pg_attribute src_col ON src_col.attrelid = src_tab.oid AND src_col.attnum = src.attnum
+      JOIN pg_attribute tgt_col ON tgt_col.attrelid = tgt_tab.oid AND tgt_col.attnum = tgt.attnum
+      WHERE con.contype = 'f'
+        AND sch1.nspname NOT IN ('pg_catalog','information_schema')
+        AND sch2.nspname NOT IN ('pg_catalog','information_schema')
+      ORDER BY constraint_name, from_schema, from_table;
+    `,
+  },
+
+  MYSQL: {
+    // ใช้ TABLE_ROWS จาก information_schema.tables (InnoDB เป็นประมาณการ)
+    listTables: `
+      SELECT
+        t.TABLE_SCHEMA                 AS schema_name,
+        t.TABLE_NAME                   AS name,
+        t.TABLE_TYPE                   AS table_type,
+        COUNT(c.COLUMN_NAME)           AS column_count,
+        COALESCE(t.TABLE_ROWS, 0)      AS row_count
+      FROM information_schema.tables t
+      LEFT JOIN information_schema.columns c
+        ON  c.TABLE_SCHEMA = t.TABLE_SCHEMA
+        AND c.TABLE_NAME   = t.TABLE_NAME
+      WHERE t.TABLE_SCHEMA = ?
+        AND t.TABLE_TYPE IN ('BASE TABLE','VIEW')
+      GROUP BY t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS
+      ORDER BY t.TABLE_SCHEMA, t.TABLE_NAME;
+    `,
+    listRelations: `
+      SELECT 
+        kcu.TABLE_SCHEMA               AS from_schema,
+        kcu.TABLE_NAME                 AS from_table,
+        kcu.COLUMN_NAME                AS from_column,
+        kcu.REFERENCED_TABLE_SCHEMA    AS to_schema,
+        kcu.REFERENCED_TABLE_NAME      AS to_table,
+        kcu.REFERENCED_COLUMN_NAME     AS to_column,
+        kcu.CONSTRAINT_NAME            AS constraint_name
+      FROM information_schema.KEY_COLUMN_USAGE kcu
+      WHERE kcu.TABLE_SCHEMA = ?
+        AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+      ORDER BY constraint_name, from_schema, from_table;
+    `,
+  }
 
 
 };

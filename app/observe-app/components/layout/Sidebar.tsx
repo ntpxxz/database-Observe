@@ -27,9 +27,29 @@ export const Sidebar: FC<SidebarProps> = ({
   const [openZones, setOpenZones] = useState<{ [key: string]: boolean }>({});
   const router = useRouter();
 
-  const handleSelectServerClick = async (server: DatabaseInventory) => {
+  const handleSelectServerClick = (server: DatabaseInventory) => {
     console.log('Sidebar: Selecting server:', server.systemName);
     onSelectServer(server);
+
+    // เลือกค่าชื่อ DB จากฟิลด์ที่พบบ่อยใน inventory record
+    const anyServer = server as any;
+    const dbName: string | undefined =
+      anyServer?.databaseName ??
+      anyServer?.defaultDb ??
+      anyServer?.dbName ??
+      anyServer?.db ??
+      anyServer?.database ??
+      undefined;
+
+    if (!dbName) {
+      console.warn("[Sidebar] No database name on selected server. Falling back to /inventory page.", server);
+      // ถ้าไม่มีชื่อ DB ให้กลับไปหน้า inventory หลัก (หรือปรับตามที่คุณต้องการ)
+      router.push(`/inventory`);
+      return;
+    }
+
+    // นำทางไปยัง TableListPage
+    router.push(`/inventory/${server.inventoryID}/tablelist?db=${encodeURIComponent(dbName)}`);
   };
 
   const handleManageInventoryClick = () => {
@@ -63,6 +83,7 @@ export const Sidebar: FC<SidebarProps> = ({
           {navigationItems.map((item) => (
             <button
               key={item.name}
+              type="button"
               onClick={item.onClick}
               className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 item.active
@@ -99,6 +120,7 @@ export const Sidebar: FC<SidebarProps> = ({
               <div key={zone} className="space-y-1">
                 {/* Zone Header */}
                 <button
+                  type="button"
                   onClick={() =>
                     setOpenZones((prev) => ({
                       ...prev,
@@ -126,14 +148,13 @@ export const Sidebar: FC<SidebarProps> = ({
                 {/* Server List */}
                 {openZones[zone] &&
                   serverList.map((server) => {
-                    const id =
-                      server.inventoryID?.toString?.() ?? "unknown";
-                    const isActive =
-                      activeServer?.inventoryID === server.inventoryID;
+                    const id = server.inventoryID?.toString?.() ?? "unknown";
+                    const isActive = activeServer?.inventoryID === server.inventoryID;
 
                     return (
                       <div key={id} className="pl-6">
                         <button
+                          type="button"
                           onClick={() => handleSelectServerClick(server)}
                           className={`w-full flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                             isActive
@@ -141,13 +162,8 @@ export const Sidebar: FC<SidebarProps> = ({
                               : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
                           }`}
                         >
-                          <ServerIcon
-                            className="mr-2 flex-shrink-0"
-                            size={16}
-                          />
-                          <span className="truncate">
-                            {server.systemName}
-                          </span>
+                          <ServerIcon className="mr-2 flex-shrink-0" size={16} />
+                          <span className="truncate">{server.systemName}</span>
                           {isActive && (
                             <div className="ml-auto w-2 h-2 bg-sky-400 rounded-full flex-shrink-0" />
                           )}
