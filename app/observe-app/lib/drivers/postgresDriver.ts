@@ -12,9 +12,9 @@ import {
 
 import {
   PROBLEMATIC_POSTGRES_WAIT_EVENTS,
-} from "@/lib/sqlQueries"; // <— เพิ่ม import ลิสต์ wait ปัญหา
+} from "@/lib/sqlQueries"; 
 
-// Utility เล็ก ๆ สำหรับแปลงเป็น number ปลอดภัย
+
 function toNum(v: unknown, fallback = 0): number {
   const n = typeof v === "string" ? Number(v) : (v as number);
   return Number.isFinite(n) ? Number(n) : fallback;

@@ -69,7 +69,7 @@ export default function TableListPage() {
 
   // Pagination for Tables
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 9;
 
 
   
@@ -159,26 +159,26 @@ export default function TableListPage() {
 
   // ---- UI helpers ----
   const PaginationControls = ({ totalPages }: { totalPages: number }) => (
-    <div className="flex justify-center items-center gap-4 mt-6">
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={currentPage === 1}
-        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-      >
-        <ChevronLeft size={16} />
-        Prev
-      </Button>
+    <div className="flex justify-end items-center gap-2 mt-6">
+     
       <span className="text-slate-400">
         Page {currentPage} of {totalPages}
       </span>
       <Button
         variant="ghost"
         size="sm"
+        disabled={currentPage === 1}
+        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+      >
+        <ChevronLeft size={16} />        
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
         disabled={currentPage === totalPages}
         onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
       >
-        Next
+        
         <ChevronRight size={16} />
       </Button>
     </div>
@@ -201,7 +201,7 @@ const nodeHeight = 48;
 
 function layout(nodes: any[], edges: any[]) {
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", nodesep: 60, ranksep: 80 });
+  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
   g.setDefaultEdgeLabel(() => ({}));
 
   nodes.forEach((n) => g.setNode(n.id, { width: nodeWidth, height: nodeHeight }));

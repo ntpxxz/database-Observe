@@ -1,23 +1,6 @@
 version: '3.9'
 
 services:
-  # OLLAMA (SQLCoder, LLM)
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    networks:
-      - app-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-
   # MySQL
   mysql:
     image: mysql:8.0
@@ -27,7 +10,7 @@ services:
       MYSQL_USER: appuser
       MYSQL_PASSWORD: apppass
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     networks:
@@ -59,36 +42,50 @@ services:
       timeout: 5s
       retries: 5
 
-  # OPTIONAL: Next.js app in container (ใช้เฉพาะกรณีต้องการ run dev ใน container)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # Next.js app (Production build)
   nextjs-app:
     build:
       context: ./app/observe-app
       dockerfile: Dockerfile
     ports:
-      - "3000:3090"
-    volumes:
-      - ./app/observe-app:/app
+      - "3090:3090"
+
     working_dir: /app
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
+      - PORT=3090
+      - HOST=0.0.0.0
     env_file:
       - ./app/observe-app/.env.local
-    command: npm run dev
+    command: npm run start
     depends_on:
-      ollama:
-        condition: service_healthy
       mysql:
         condition: service_healthy
       postgres:
         condition: service_healthy
     networks:
-      - app-net
+      - app-net      
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      
 
-volumes:
-  ollama-data:
+volumes:  
   mysql-data:
   pg-data:
 
 networks:
   app-net:
     driver: bridge
+  internl:
