@@ -212,6 +212,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     }
 
     if (!isReadOnlySQL(query)) {
+      console.log(query)
       toast.error("❌ Only read-only SELECT or safe EXEC queries allowed.");
       return { error: "Query validation failed on client." };
     }

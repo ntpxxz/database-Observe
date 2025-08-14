@@ -1,5 +1,5 @@
 "use client";
-import React, { FC, useState } from "react";
+import React, { FC, useEffect, useState } from "react";
 import { PerformanceInsight } from "@/types";
 import {
   X,
@@ -42,7 +42,19 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
   loadingSuggestion,
 }) => {
   const [copied, setCopied] = useState(false);
-
+  
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+  
+    window.addEventListener("keydown", handleEsc);
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+    };
+  }, [onClose]);
   if (!insight) return null;
 
   // Type-safe access to details with proper type checking

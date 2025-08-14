@@ -51,6 +51,21 @@ export const AddServerModal: FC<AddServerModalProps> = ({
       setIsSubmitting(false);
     }
   }, [isOpen, initialData]);
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener("keydown", handleEsc);
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -138,6 +153,7 @@ export const AddServerModal: FC<AddServerModalProps> = ({
       setIsSubmitting(false);
     }
   };
+  
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">

@@ -50,6 +50,22 @@ export const EditDatabaseModal: FC<EditDatabaseModalProps> = ({
       setIsSubmitting(false);
     }
   }, [isOpen, server]);
+  
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener("keydown", handleEsc);
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+    };
+  }, [isOpen, onClose]);
 
   const handleChange = (
     e: React.ChangeEvent<

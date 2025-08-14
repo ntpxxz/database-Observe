@@ -52,6 +52,8 @@ services:
       - "5050:80"
     depends_on:
       - postgres
+    networks:
+      - app-net     # ✅ เพิ่มบรรทัดนี้
     restart: unless-stopped
 
   # Next.js app (Production build)

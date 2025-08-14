@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC, useEffect } from "react";
 import { X, ClipboardCopy } from "lucide-react";
 
 interface SQLTuningModalProps {
@@ -14,6 +14,22 @@ export const SQLTuningModal: FC<SQLTuningModalProps> = ({
   suggestion,
   onClose,
 }) => {
+  
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+  
+    if (isOpen) {
+      window.addEventListener("keydown", handleEsc);
+    }
+  
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+    };
+  }, [isOpen, onClose]);
   if (!isOpen) return null;
 
   const copyToClipboard = (text: string) => {
