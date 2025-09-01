@@ -4,8 +4,8 @@ import {
   Server as ServerIcon,
   ChevronDown,
   ChevronRight,
-  List,
   Database,
+  Server,
 } from "lucide-react";
 import { DatabaseInventory } from "@/types";
 import { useRouter } from "next/navigation";
@@ -53,15 +53,15 @@ export const Sidebar: FC<SidebarProps> = ({
   };
 
   const handleManageInventoryClick = () => {
-    console.log('Sidebar: Selecting manage inventory');
+    console.log('Sidebar: Selecting server inventory');
     onSelectServer(null);
     router.push('/inventory');
   };
 
   const navigationItems = [
     {
-      name: "Manage Inventory",
-      icon: List,
+      name: "Server Inventory",
+      icon: Server,
       onClick: handleManageInventoryClick,
       active: !activeServer,
     },
@@ -101,7 +101,7 @@ export const Sidebar: FC<SidebarProps> = ({
 
           {/* Section Title */}
           <h2 className="px-3 text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">
-            Database Servers
+          Database Inventory
           </h2>
 
           {/* Loading State */}
@@ -113,7 +113,7 @@ export const Sidebar: FC<SidebarProps> = ({
           ) : Object.keys(zones || {}).length === 0 ? (
             <div className="text-center py-8 text-slate-500">
               <Database size={32} className="mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No servers found</p>
+              <p className="text-sm">Loading servers...</p>
             </div>
           ) : (
             Object.entries(zones).map(([zone, serverList]) => (

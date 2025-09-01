@@ -77,7 +77,7 @@ function createConnectionConfig(
 
     default:
       return {
-        databaseType: 'UNKNOWN' as any,
+        databaseType: 'UNKNOWN' as unknown,
         serverHost: serverData.serverHost,
         connectionUsername: serverData.connectionUsername,
         credentialReference: serverData.credentialReference,
@@ -149,7 +149,8 @@ async function testConnection(
 
 export async function GET() {
   try {
-    const result = await queryAppStaticDb(`
+    const result = await queryAppStaticDb(
+      `
       SELECT
         InventoryID as inventoryID,
         SystemName as systemName,
@@ -159,6 +160,7 @@ export async function GET() {
         DatabaseType as databaseType,
         ConnectionUsername as connectionUsername,
         CredentialReference as credentialReference
+        -- purposeNotes, ownerContact, createdAt, updatedAt
       FROM IT_ManagementDB.dbo.DatabaseInventory
       ORDER BY zone ASC, systemName ASC
     `);
@@ -192,7 +194,7 @@ export async function GET() {
       }),
     );
 
-    const groupedByZone: Record<string, any[]> = {};
+    const groupedByZone: Record<string, unknown[]> = {};
     for (const srv of enrichedServers) {
       if (!groupedByZone[srv.zone]) {
         groupedByZone[srv.zone] = [];
@@ -220,7 +222,9 @@ export async function POST(request: Request) {
       !body.port ||
       !body.databaseType ||
       !body.connectionUsername ||
-      !body.credentialReference
+      !body.credentialReference ||
+      !body.purposeNotes ||
+      !body.ownerContact 
     ) {
       return NextResponse.json(
         { success: false, message: "Missing required fields." },
@@ -260,8 +264,8 @@ export async function POST(request: Request) {
     // ถ้าการเชื่อมต่อสำเร็จ ให้บันทึกลงฐานข้อมูล
     const insertQuery = `
       INSERT INTO IT_ManagementDB.dbo.DatabaseInventory
-      (SystemName, ServerHost, Port, Zone, DatabaseType, ConnectionUsername, CredentialReference)
-      VALUES (@systemName, @serverHost, @port, @zone, @databaseType, @connectionUsername, @credentialReference)
+      (SystemName, ServerHost, Port, Zone, DatabaseType, ConnectionUsername, CredentialReference, purposeNotes, ownerContact)
+      VALUES (@systemName, @serverHost, @port, @zone, @databaseType, @connectionUsername, @credentialReference, @purposeNotes, @ownerContact)
     `;
 
     await queryAppStaticDb(insertQuery, {
@@ -272,6 +276,8 @@ export async function POST(request: Request) {
       databaseType: body.databaseType.toUpperCase(),
       connectionUsername: body.connectionUsername,
       credentialReference: body.credentialReference,
+      purposeNotes: body.purposeNotes || "",
+      ownerContact: body.ownerContact || ""
     });
 
     return NextResponse.json({ success: true });

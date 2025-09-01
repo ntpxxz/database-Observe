@@ -57,17 +57,24 @@ export async function queryAppDb(
 }
 export async function getInventoryById(id: string) {
   const result = await queryAppDb(
-    `SELECT 
-      InventoryID as inventoryID,
-      SystemName as systemName,
-      ServerHost as serverHost,
-      Port as port,
-      Zone as zone,
-      DatabaseType as databaseType,
-      ConnectionUsername as connectionUsername,
-      CredentialReference as credentialReference
-    FROM IT_ManagementDB.dbo.DatabaseInventory
-    WHERE InventoryID = @id`,
+    ` SELECT 
+        InventoryID,
+        systemName,
+        serverHost,
+        port,
+        zone,
+        databaseType,
+        connectionUsername,
+        credentialReference,
+        purposeNotes,
+        ownerContact,
+        createdDate,
+        createdBy,
+        updated_at,
+        castUpdatedBy,
+        status
+      FROM IT_ManagementDB.dbo.DatabaseInventory
+      WHERE InventoryID = @id`,
     { id },
   );
 

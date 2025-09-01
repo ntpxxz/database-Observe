@@ -22,7 +22,7 @@ import {
   Bot,
 } from "lucide-react";
 import { PerformanceInsight } from "@/types";
-import { InsightDetailModal } from "./InsightDetailModal";
+import { InsightDetailModal } from "../modals/InsightDetailModal";
 
 interface PerformanceInsightsTableProps {
   insights: any[];

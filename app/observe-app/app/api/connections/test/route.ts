@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  ServerFormData,
+  DatabaseInventory,
   AnyPool,
   MSSQLConnectionConfig,
   PostgreSQLConnectionConfig,
@@ -16,7 +16,7 @@ const TEST_CONNECTION_TIMEOUT = 60000;
 
 export async function POST(request: NextRequest) {
   let targetPool: AnyPool | undefined;
-  let body: ServerFormData | undefined;
+  let body: DatabaseInventory | undefined;
 
   try {
     const parsedBody = await request.json();
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    body = parsedBody as ServerFormData;
+    body = parsedBody as DatabaseInventory;
 
     const validationErrors = validateServerConnectionData(body);
     if (validationErrors.length > 0) {
@@ -128,7 +128,7 @@ function timeoutPromise(): Promise<never> {
   );
 }
 
-function validateServerConnectionData(body: ServerFormData): string[] {
+function validateServerConnectionData(body: DatabaseInventory): string[] {
   const errors: string[] = [];
 
   if (!body.databaseType) errors.push('Database type is required');
@@ -151,7 +151,7 @@ function validateServerConnectionData(body: ServerFormData): string[] {
 }
 
 // ✅ Config factories
-function createMSSQLConnectionConfig(body: ServerFormData): MSSQLConnectionConfig {
+function createMSSQLConnectionConfig(body: DatabaseInventory): MSSQLConnectionConfig {
   return {
     databaseType: 'MSSQL',
     serverHost: body.serverHost.trim(), // เปลี่ยนจาก server เป็น serverHost
@@ -175,7 +175,7 @@ function createMSSQLConnectionConfig(body: ServerFormData): MSSQLConnectionConfi
   };
 }
 
-function createPostgreSQLConnectionConfig(body: ServerFormData): PostgreSQLConnectionConfig {
+function createPostgreSQLConnectionConfig(body: DatabaseInventory): PostgreSQLConnectionConfig {
   return {
     databaseType: 'POSTGRES',
     serverHost: body.serverHost.trim(), // เปลี่ยนจาก host เป็น serverHost
@@ -191,7 +191,7 @@ function createPostgreSQLConnectionConfig(body: ServerFormData): PostgreSQLConne
   };
 }
 
-function createMySQLConnectionConfig(body: ServerFormData): MySQLConnectionConfig {
+function createMySQLConnectionConfig(body: DatabaseInventory): MySQLConnectionConfig {
   return {
     databaseType: 'MYSQL',
     serverHost: body.serverHost.trim(), // เปลี่ยนจาก host เป็น serverHost

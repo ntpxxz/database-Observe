@@ -14,29 +14,97 @@ export const SQL_QUERIES = {
         (SELECT CAST(cntr_value AS FLOAT) FROM sys.dm_os_performance_counters WHERE counter_name = 'Buffer cache hit ratio' AND object_name LIKE '%Buffer Manager%') /
         (SELECT CAST(cntr_value AS FLOAT) FROM sys.dm_os_performance_counters WHERE counter_name = 'Buffer cache hit ratio base' AND object_name LIKE '%Buffer Manager%') * 100, 2
       ) as cache_hit_ratio_percent`,
-
   cpuPressure: `
-    /* ObserveApp-Monitor:CPUPressure */
-    SELECT 
-      100 - AVG(record.value('(Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', 'int')) as cpu_pressure_percent
-    FROM (
-      SELECT TOP 10 CONVERT(xml, record) as record
-      FROM sys.dm_os_ring_buffers
-      WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR'
-        AND record LIKE '%<SystemHealth>%'
-      ORDER BY timestamp DESC
-    ) as rb`,
+      /* ObserveApp-Monitor:CPUPressure */
+      SELECT 
+        CAST(cntr_value AS FLOAT) as cpu_usage_percent
+      FROM sys.dm_os_performance_counters 
+      WHERE object_name = 'SQLServer:Resource Pool Stats'
+        AND counter_name = 'CPU usage %'
+        AND instance_name = 'default'
+      UNION ALL
+      SELECT 
+        AVG(signal_wait_time_ms) * 100.0 / 
+        NULLIF(AVG(signal_wait_time_ms) + AVG(wait_time_ms - signal_wait_time_ms), 0) as cpu_usage_percent
+      FROM sys.dm_os_wait_stats 
+      WHERE wait_type NOT IN (
+        'CLR_SEMAPHORE', 'LAZYWRITER_SLEEP', 'RESOURCE_QUEUE', 
+        'SLEEP_TASK', 'SLEEP_SYSTEMTASK', 'SQLTRACE_BUFFER_FLUSH',
+        'WAITFOR', 'LOGMGR_QUEUE', 'CHECKPOINT_QUEUE',
+        'REQUEST_FOR_DEADLOCK_SEARCH', 'XE_TIMER_EVENT', 'BROKER_TO_FLUSH',
+        'BROKER_TASK_STOP', 'CLR_MANUAL_EVENT', 'CLR_AUTO_EVENT',
+        'DISPATCHER_QUEUE_SEMAPHORE', 'FT_IFTS_SCHEDULER_IDLE_WAIT'
+      )`,
+
   serverMemoryUsage: `
-    /* ObserveApp-Monitor:ServerMemoryUsage */
-SELECT 
-  (total_physical_memory_kb - available_physical_memory_kb) / 1024 AS used_memory_mb
-FROM sys.dm_os_sys_memory;
-  `,
+      /* ObserveApp-Monitor:ServerMemoryUsage */
+      SELECT 
+        (committed_kb / 1024) AS used_memory_mb,
+        (committed_target_kb / 1024) AS target_memory_mb,
+        (visible_target_kb / 1024) AS max_memory_mb
+      FROM sys.dm_os_sys_memory
+      UNION ALL
+      SELECT 
+        cntr_value / 1024 AS used_memory_mb,
+        NULL as target_memory_mb,
+        NULL as max_memory_mb
+      FROM sys.dm_os_performance_counters 
+      WHERE counter_name = 'Total Server Memory (KB)'
+        AND object_name LIKE '%Memory Manager%'`,
+  sqlServerMemoryUsage: `
+        /* ObserveApp-Monitor:SQLServerMemoryUsage */
+        SELECT 
+          (SELECT cntr_value / 1024 
+           FROM sys.dm_os_performance_counters 
+           WHERE counter_name = 'Total Server Memory (KB)' 
+             AND object_name LIKE '%Memory Manager%') AS total_server_memory_mb,
+          (SELECT cntr_value / 1024 
+           FROM sys.dm_os_performance_counters 
+           WHERE counter_name = 'Target Server Memory (KB)' 
+             AND object_name LIKE '%Memory Manager%') AS target_server_memory_mb,
+          (SELECT physical_memory_in_use_kb / 1024
+           FROM sys.dm_os_process_memory) AS process_memory_mb`,
+
+  // เพิ่ม query สำหรับ accurate CPU:
+  accurateCpuUsage: `
+        /* ObserveApp-Monitor:AccurateCPUUsage */
+        DECLARE @ts_now bigint = (SELECT cpu_ticks/(cpu_ticks/ms_ticks) FROM sys.dm_os_sys_info);
+        
+        SELECT TOP(1)
+          100 - record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', 'int') AS cpu_usage_percent,
+          @ts_now as timestamp_ms
+        FROM (
+          SELECT TOP(2) CONVERT(xml, record) as record
+          FROM sys.dm_os_ring_buffers 
+          WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR'
+            AND record like N'%<SystemHealth>%'
+          ORDER BY timestamp DESC
+        ) AS x
+        ORDER BY timestamp_ms DESC`,
   dbSize: `
     /* ObserveApp-Monitor:DatabaseSize */
     SELECT 
       SUM(CAST(FILEPROPERTY(name, 'SpaceUsed') AS BIGINT) * 8.0 / 1024) as total_size_mb
     FROM sys.database_files`,
+
+  memoryUsage: `
+SELECT
+  used_mb  = CAST(pm.total_server_memory_kb / 1024.0 AS int),     -- SQL process ใช้อยู่ตอนนี้
+  total_mb = CAST(os.total_physical_memory_kb / 1024.0 AS int)    -- Physical RAM ทั้งระบบ
+FROM sys.dm_os_process_memory AS pm
+CROSS JOIN sys.dm_os_sys_memory AS os;
+  `,
+  maxServerMemory: `
+SELECT 
+  [max_memory_mb] = CAST(value_in_use AS int)
+FROM sys.configurations 
+WHERE name = 'max server memory (MB)';
+
+  `,
+  physicalMemory: `
+    SELECT CAST(physical_memory_kb / 1024.0 AS float) AS physical_memory_mb
+    FROM sys.dm_os_sys_info;
+  `,
 
   longRunningQueries: `
     /* ObserveApp-Monitor:LongRunningQueries */
@@ -323,8 +391,6 @@ ORDER BY
   sizeMB DESC;
 ;`,
 
-
-
   MSSQL: {
     listTables: `
       WITH row_counts AS (
@@ -370,7 +436,6 @@ ORDER BY
       ORDER BY constraint_name, from_schema, from_table;
     `,
   },
-
 
   POSTGRES: {
     // ค่าประมาณที่เร็ว (ใช้ pg_class.reltuples) + ผูก schema ถูกต้อง
@@ -450,9 +515,7 @@ ORDER BY
         AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
       ORDER BY constraint_name, from_schema, from_table;
     `,
-  }
-
-
+  },
 };
 
 export const PROBLEMATIC_MSSQL_WAIT_TYPES = new Set<string>([
@@ -497,12 +560,16 @@ export function filterProblematicWaits(
   if (!Array.isArray(waitStats) || waitStats.length === 0) return [];
   if (engine === "mssql") {
     return waitStats.filter((w) =>
-      PROBLEMATIC_MSSQL_WAIT_TYPES.has(String(w.wait_type || w.title || "").toUpperCase())
+      PROBLEMATIC_MSSQL_WAIT_TYPES.has(
+        String(w.wait_type || w.title || "").toUpperCase()
+      )
     );
   }
   if (engine === "postgresql") {
     return waitStats.filter((w) => {
-      const key = String(w.wait_type || w.title || w.event || w.wait_event || "").trim();
+      const key = String(
+        w.wait_type || w.title || w.event || w.wait_event || ""
+      ).trim();
       // ตัดช่องว่าง/ขึ้นต้น/ตามด้วย เพื่อความ robust
       return PROBLEMATIC_POSTGRES_WAIT_EVENTS.has(key);
     });
@@ -510,6 +577,5 @@ export function filterProblematicWaits(
   // mysql: ไม่มี DMV wait แบบ MSSQL/PG — ซ่อนไป
   return [];
 }
-
 
 export type SqlQueries = typeof SQL_QUERIES;

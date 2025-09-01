@@ -35,7 +35,7 @@ export async function getInventoryById(
     purposeNotes: row.purposeNotes,
     createdBy: row.createdBy,
     createdDate: row.createdDate,
-    lastUpdatedOn: row.lastUpdatedOn,
+    updated_at: row.lastUpdatedOn,
     lastUpdatedBy: row.lastUpdatedBy,
     status: row.status || "Active",
     encrypt: row.encrypt || false,

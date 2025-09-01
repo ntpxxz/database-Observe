@@ -33,7 +33,7 @@ export type DriverMap = {
   MYSQL: BaseDriver<MySQLConnectionConfig, MySQLPool>;
 };
 
-// MSSQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม ServerFormData และ error message)
+// MSSQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม DatabaseInventory และ error message)
 export interface MSSQLConnectionConfig {
   databaseType: 'MSSQL';
   serverHost: string; // เปลี่ยนจาก server เป็น serverHost
@@ -57,7 +57,7 @@ export interface MSSQLConnectionConfig {
   };
 }
 
-// PostgreSQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม ServerFormData เพื่อความสอดคล้อง)
+// PostgreSQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม DatabaseInventory เพื่อความสอดคล้อง)
 export interface PostgreSQLConnectionConfig {
   databaseType: 'POSTGRES';
   serverHost: string; // เปลี่ยนจาก host เป็น serverHost
@@ -72,7 +72,7 @@ export interface PostgreSQLConnectionConfig {
   min?: number;
 }
 
-// MySQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม ServerFormData เพื่อความสอดคล้อง)
+// MySQL Connection Config (ปรับปรุงให้มี Properties ตรงตาม DatabaseInventory เพื่อความสอดคล้อง)
 export interface MySQLConnectionConfig {
   databaseType: 'MYSQL';
   serverHost: string; // เปลี่ยนจาก host เป็น serverHost
@@ -125,17 +125,17 @@ export interface DatabaseInventory extends BaseConnectionConfig {
   databaseName?: string;
   encrypt?: boolean;
   ownerContact: string;
-  purposeNotes?: string;
+  purposeNotes: string;
   createdDate?: string;
   createdBy?: string;
-  lastUpdatedOn?: string;
+  updated_at?: string;
   lastUpdatedBy?: string;
   status: 'Active' | 'Inactive';
 }
 
 export type Server = DatabaseInventory
 
-export interface ServerFormData extends BaseConnectionConfig {
+/** export interface ServerFormData extends BaseConnectionConfig {
   inventoryID?: string;
   systemName: string;
   serverHost: string;
@@ -144,13 +144,14 @@ export interface ServerFormData extends BaseConnectionConfig {
   credentialReference: string;
   databaseName?: string;
   encrypt?: boolean;
-  notes?: string;
+  purposeNotes: string;
+  createdDate?: string;
   createdOn?: string;
   createdBy?: string;
   lastUpdatedOn?: string;
   lastUpdatedBy?: string;
   status: 'Active' | 'Inactive';
-}
+} **/
 
 // =============================================================================
 // UI COMPONENTS
@@ -170,8 +171,8 @@ export interface PerformanceInsightsTableProps {
 export interface ServerFormModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (serverData: ServerFormData) => void;
-  serverToEdit: Server | Partial<ServerFormData> | null;
+  onSave: (serverData: DatabaseInventory) => void;
+  serverToEdit: Server | Partial<DatabaseInventory> | null;
 }
 
 export interface ManagementPanelProps {
@@ -182,7 +183,7 @@ export interface ManagementPanelProps {
 }
 
 export interface NetworkScannerPanelProps {
-  onAdd: (partialServer: Partial<ServerFormData>) => void;
+  onAdd: (partialServer: Partial<DatabaseInventory>) => void;
 }
 
 export interface QueryAnalysisModalProps {
@@ -310,6 +311,7 @@ export interface Metrics {
     memory?: number;
     disk?: number;
     connections?: number;
+    maxConnections?: number
   };
   hardware?: {
     cpuUsage: number;
@@ -417,3 +419,141 @@ export interface serverStatus {
 
 
 
+
+// Enhanced KPI Widget with Progress Bar
+export interface KPIWidgetProps {
+  icon: React.ReactNode;
+  title: string;
+  value: number | undefined;
+  max?: number;
+  unit?: string;
+    color: "sky" | "violet" | "green" | "amber";
+  warning?: number;
+  critical?: number;
+}
+
+export interface ServerDetailViewProps {
+  server: DatabaseInventory;
+  metrics: Metrics | null;
+  isLoading: boolean;
+  error: string | null;
+  insights?: PerformanceInsight[] | null;
+  insightsLoading?: boolean;
+  insightError?: string | null;
+  onRefresh: (tab: TabType) => void;
+  onRefreshKPI: () => Promise<void>;
+}
+
+export interface DetailItemProps {
+  label: string;
+  value: string | number | null;
+  isHighlight?: boolean;
+}
+
+
+export type TabType = "performance" | "insights" | "hardware";
+
+export interface QueryData {
+  session_id?: number | string;
+  blocking_session_id?: number;
+  process_id_1?: number;
+  process_id_2?: number;
+  query_1?: string;
+  query_2?: string;
+  current_query?: string;
+  query_text?: string;
+  blocking_query?: string;
+  query?: string;
+  details?: { query?: string };
+  total_elapsed_time?: number;
+  percent_complete?: number;
+  blocker_login?: string;
+  blocked_login?: string;
+  blocked_session_id?: number;
+  wait_duration_ms?: number;
+  deadlock_time?: string;
+  usage_mb?: number;
+  login_name?: string;
+  mean_exec_time_ms?: number;
+  duration_ms?: number;
+  calls?: number;
+  program_name?: string;
+  client_net_address?: string;
+  status?: string;
+  user_name?: string;
+  allocated_space_mb?: number;
+  used_space_mb?: number;
+  wait_type?: string;
+  wait_time?: number;
+  wait_time_ms?: number;
+  waiting_tasks_count?: number;
+  resource_description?: string;
+  victim_session_id?: string;
+  resource?: string;
+  mode?: string;
+  process_list?: any[];
+}
+
+export interface DatabaseRow {
+  name: string;
+  sizeMB?: number;
+  state_desc?: string;
+  recovery_model_desc?: string;
+  compatibility_level?: number;
+  collation_name?: string;
+  create_date?: Date;
+}
+
+
+// types/alert.ts
+
+export interface AlertConfig {
+  cpu: { warning: number; critical: number; enabled: boolean };
+  memory: { warning: number; critical: number; enabled: boolean };
+  connections: { warning: number; critical: number; enabled: boolean };
+  cache: { warning: number; critical: number; enabled: boolean };
+}
+
+export interface AlertHistoryItem {
+  id: string;
+  timestamp: Date;
+  metric: string;
+  level: 'warning' | 'critical';
+  value: number;
+  threshold: number;
+  message: string;
+  resolved?: Date;
+  duration?: number; // in minutes
+}
+
+export interface ActiveAlert {
+  type: string;
+  level: 'warning' | 'critical';
+  message: string;
+  value?: number;
+  threshold?: number;
+}
+
+export type AlertLevel = 'normal' | 'warning' | 'critical';
+export type AlertType = 'percentage' | 'absolute' | 'reverse';
+
+export const defaultAlertConfig: AlertConfig = {
+  cpu: { warning: 70, critical: 85, enabled: true },
+  memory: { warning: 80, critical: 90, enabled: true },
+  connections: { warning: 70, critical: 85, enabled: true },
+  cache: { warning: 70, critical: 60, enabled: true },
+};
+
+// Utility functions
+export const generateAlertId = (metric: string, level: string): string => {
+  return `${metric}-${level}-${Date.now()}`;
+};
+
+export const formatAlertValue = (value: number, unit: string): string => {
+  return `${value.toFixed(1)}${unit}`;
+};
+
+export const getAlertDuration = (start: Date, end?: Date): number => {
+  const endTime = end || new Date();
+  return Math.floor((endTime.getTime() - start.getTime()) / (1000 * 60)); // minutes
+};

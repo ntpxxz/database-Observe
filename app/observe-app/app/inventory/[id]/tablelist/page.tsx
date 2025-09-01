@@ -10,7 +10,7 @@ import {
   GitBranch,
   Search,
   Grid3X3,
-  Eye,  
+  Eye,
   MoreVertical,
   ChevronLeft,
   ChevronRight,
@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 // === React Flow ===
 import ReactFlow, { Background, Controls } from "reactflow";
 import "reactflow/dist/style.css";
-import dagre from 'dagre'
+import dagre from "dagre";
 interface TableInfo {
   name: string;
   rows?: number;
@@ -46,7 +46,11 @@ interface TableListResponse {
 type TabType = "tables" | "relations";
 
 // Pagination helper
-const usePagination = <T,>(items: T[], pageSize: number, currentPage: number) => {
+const usePagination = <T,>(
+  items: T[],
+  pageSize: number,
+  currentPage: number
+) => {
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedItems = items.slice(startIndex, startIndex + pageSize);
@@ -71,8 +75,6 @@ export default function TableListPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 9;
 
-
-  
   // Reset page when switching tabs, search, or database changes
   useEffect(() => {
     setCurrentPage(1);
@@ -95,7 +97,9 @@ export default function TableListPage() {
         );
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: Failed to fetch table list`);
+          throw new Error(
+            `HTTP ${response.status}: Failed to fetch table list`
+          );
         }
 
         const data: TableListResponse = await response.json();
@@ -115,7 +119,9 @@ export default function TableListPage() {
         setError(null);
       } catch (err) {
         console.error("Fetch tables error:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
+        setError(
+          err instanceof Error ? err.message : "An unknown error occurred"
+        );
       } finally {
         setLoading(false);
       }
@@ -152,15 +158,12 @@ export default function TableListPage() {
   }, [relations, searchQuery]);
 
   // ---- Pagination (after filtering) for Tables only ----
-  const {
-    paginatedItems: paginatedTables,
-    totalPages: totalTablePages,
-  } = usePagination(filteredTables, pageSize, currentPage);
+  const { paginatedItems: paginatedTables, totalPages: totalTablePages } =
+    usePagination(filteredTables, pageSize, currentPage);
 
   // ---- UI helpers ----
   const PaginationControls = ({ totalPages }: { totalPages: number }) => (
     <div className="flex justify-end items-center gap-2 mt-6">
-     
       <span className="text-slate-400">
         Page {currentPage} of {totalPages}
       </span>
@@ -170,7 +173,7 @@ export default function TableListPage() {
         disabled={currentPage === 1}
         onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
       >
-        <ChevronLeft size={16} />        
+        <ChevronLeft size={16} />
       </Button>
       <Button
         variant="ghost"
@@ -178,7 +181,6 @@ export default function TableListPage() {
         disabled={currentPage === totalPages}
         onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
       >
-        
         <ChevronRight size={16} />
       </Button>
     </div>
@@ -196,92 +198,99 @@ export default function TableListPage() {
   };
 
   // --- Dagre layout helper ---
-const nodeWidth = 160;
-const nodeHeight = 48;
+  const nodeWidth = 160;
+  const nodeHeight = 48;
 
-function layout(nodes: any[], edges: any[]) {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
-  g.setDefaultEdgeLabel(() => ({}));
+  function layout(nodes: any[], edges: any[]) {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
+    g.setDefaultEdgeLabel(() => ({}));
 
-  nodes.forEach((n) => g.setNode(n.id, { width: nodeWidth, height: nodeHeight }));
-  edges.forEach((e) => g.setEdge(e.source, e.target));
+    nodes.forEach((n) =>
+      g.setNode(n.id, { width: nodeWidth, height: nodeHeight })
+    );
+    edges.forEach((e) => g.setEdge(e.source, e.target));
 
-  dagre.layout(g);
+    dagre.layout(g);
 
-  return nodes.map((n) => {
-    const p = g.node(n.id);
-    return {
-      ...n,
-      position: { x: p.x - nodeWidth / 2, y: p.y - nodeHeight / 2 },
-    };
-  });
-}
-
-// ---- Build nodes & edges from filteredRelations, then apply layout ----
-const { diagramNodes, diagramEdges } = useMemo(() => {
-  // สร้างชุดชื่อ table จาก relations
-  const tableSet = new Set<string>();
-  filteredRelations.forEach((r) => {
-    tableSet.add(r.fromTable);
-    tableSet.add(r.toTable);
-  });
-
-  // nodes ดิบ (ยังไม่จัดตำแหน่ง)
-  const rawNodes = Array.from(tableSet).map((t) => ({
-    id: t,
-    data: { label: t },
-    position: { x: 0, y: 0 }, // จะถูกแทนด้วย dagre
-    style: {
-      border: "1px solid #475569",
-      padding: 10,
-      borderRadius: 8,
-      background: "#0b1220",
-      color: "#e2e8f0",
-      fontSize: 12,
-      boxShadow: "0 4px 14px rgba(14,165,233,.15)",
-    },
-  }));
-
-  // กัน edge ซ้ำด้วย key ที่อิงจาก from/to/columns
-  const seen = new Set<string>();
-  const rawEdges = filteredRelations
-    .map((r, idx) => {
-      const key = `${r.fromTable}__${r.fromColumn}__${r.toTable}__${r.toColumn}`;
-      if (seen.has(key)) return null;
-      seen.add(key);
+    return nodes.map((n) => {
+      const p = g.node(n.id);
       return {
-        id: `edge-${idx}-${key}`,
-        source: r.fromTable,
-        target: r.toTable,
-        label: `${r.fromColumn} → ${r.toColumn} (${getRelationIcon(r.type)})`,
-        type: "smoothstep",
-        animated: true,
-        style: { stroke: "#0ea5e9" },
-        labelStyle: { fill: "#e2e8f0", fontSize: 10 },
+        ...n,
+        position: { x: p.x - nodeWidth / 2, y: p.y - nodeHeight / 2 },
       };
-    })
-    .filter(Boolean) as any[];
+    });
+  }
 
-  // จัด layout ด้วย dagre
-  const laidOutNodes = layout(rawNodes, rawEdges);
+  // ---- Build nodes & edges from filteredRelations, then apply layout ----
+  const { diagramNodes, diagramEdges } = useMemo(() => {
+    // สร้างชุดชื่อ table จาก relations
+    const tableSet = new Set<string>();
+    filteredRelations.forEach((r) => {
+      tableSet.add(r.fromTable);
+      tableSet.add(r.toTable);
+    });
 
-  return { diagramNodes: laidOutNodes, diagramEdges: rawEdges };
-}, [filteredRelations]);
+    // nodes ดิบ (ยังไม่จัดตำแหน่ง)
+    const rawNodes = Array.from(tableSet).map((t) => ({
+      id: t,
+      data: { label: t },
+      position: { x: 0, y: 0 }, // จะถูกแทนด้วย dagre
+      style: {
+        border: "1px solid #475569",
+        padding: 10,
+        borderRadius: 8,
+        background: "#0b1220",
+        color: "#FF9B00",
+        fontSize: 12,
+        boxShadow: "0 4px 14px rgba(14,165,233,.15)",
+      },
+    }));
+
+    // กัน edge ซ้ำด้วย key ที่อิงจาก from/to/columns
+    const seen = new Set<string>();
+    const rawEdges = filteredRelations
+      .map((r, idx) => {
+        const key = `${r.fromTable}__${r.fromColumn}__${r.toTable}__${r.toColumn}`;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        return {
+          id: `edge-${idx}-${key}`,
+          source: r.fromTable,
+          target: r.toTable,
+          label: `${r.fromColumn} → ${r.toColumn} (${getRelationIcon(r.type)})`,
+          type: "smoothstep",
+          animated: true,
+          style: { stroke: "#FFC900" },
+          labelStyle: { fill: "#FCF8DD", fontSize: 10},
+          labelBgStyle: { fill: "#799EFF"},
+        };
+      })
+      .filter(Boolean) as any[];
+
+    // จัด layout ด้วย dagre
+    const laidOutNodes = layout(rawNodes, rawEdges);
+
+    return { diagramNodes: laidOutNodes, diagramEdges: rawEdges };
+  }, [filteredRelations]);
 
   if (!dbName) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white">
-        <div className="container mx-auto px-6 py-8">
+      <div className="bg-slate-950 text-white">
+        <div className="container mx-4 px-4 py-4">
           <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6">
             <div className="flex items-center gap-3 text-red-400">
               <Database size={20} />
               <h1 className="text-lg font-semibold">Error</h1>
             </div>
             <p className="mt-2 text-red-300">
-              Missing database name in query string. Please navigate back and try again.
+              Missing database name in query string. Please navigate back and
+              try again.
             </p>
-            <Button onClick={handleBack} className="mt-4 bg-red-500/20 hover:bg-red-500/30">
+            <Button
+              onClick={handleBack}
+              className="mt-4 bg-red-500/20 hover:bg-red-500/30"
+            >
               <ArrowLeft size={16} className="mr-2" />
               Go Back
             </Button>
@@ -293,11 +302,16 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-4 px-4 py-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <Button onClick={handleBack} variant="ghost" size="sm" className="border-slate-900 hover:bg-slate-600">
+            <Button
+              onClick={handleBack}
+              variant="ghost"
+              size="sm"
+              className="border-slate-900 hover:bg-slate-600"
+            >
               <ArrowLeft size={16} className="mr-2" />
               Back
             </Button>
@@ -306,14 +320,18 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
                 <Database className="text-sky-400" size={24} />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Database Explorer</h1>
+                <h1 className="text-2xl font-bold text-white">
+                  Database Explorer
+                </h1>
                 <p className="text-slate-400">
-                  Exploring <span className="text-sky-400 font-medium">{dbName}</span>
+                  Exploring{" "}
+                  <span className="text-sky-400 font-medium">{dbName}</span>
                 </p>
               </div>
             </div>
           </div>
         </div>
+
 
         {/* Tabs */}
         <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
@@ -346,7 +364,10 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
           <div className="p-6 border-b border-slate-800 bg-slate-900/50">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="relative flex-1">
-                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
                 <Input
                   placeholder={`Search ${activeTab}...`}
                   value={searchQuery}
@@ -368,10 +389,15 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6">
                 <div className="flex items-center gap-3 text-red-400 mb-3">
                   <Database size={20} />
-                  <h2 className="text-lg font-semibold">Error Loading {activeTab}</h2>
+                  <h2 className="text-lg font-semibold">
+                    Error Loading {activeTab}
+                  </h2>
                 </div>
                 <p className="text-red-300 mb-4">{error}</p>
-                <Button onClick={() => window.location.reload()} className="bg-red-500/20 hover:bg-red-500/30">
+                <Button
+                  onClick={() => window.location.reload()}
+                  className="bg-red-500/20 hover:bg-red-500/30"
+                >
                   Try Again
                 </Button>
               </div>
@@ -392,13 +418,17 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
                               <div className="flex items-center gap-3">
                                 <div
                                   className={`p-2 rounded-lg ${
-                                    table.type === "view" ? "bg-purple-500/20" : "bg-sky-500/20"
+                                    table.type === "view"
+                                      ? "bg-purple-500/20"
+                                      : "bg-sky-500/20"
                                   }`}
                                 >
                                   <Table
                                     size={16}
                                     className={`${
-                                      table.type === "view" ? "text-purple-400" : "text-sky-400"
+                                      table.type === "view"
+                                        ? "text-purple-400"
+                                        : "text-sky-400"
                                     } group-hover:scale-110 transition-transform`}
                                   />
                                 </div>
@@ -406,11 +436,16 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
                                   <h3 className="font-semibold text-slate-200 group-hover:text-white transition-colors">
                                     {table.name}
                                   </h3>
-                                  <p className="text-xs text-slate-500 capitalize">{table.type || "table"}</p>
+                                  <p className="text-xs text-slate-500 capitalize">
+                                    {table.type || "table"}
+                                  </p>
                                 </div>
                               </div>
                               <button className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700 rounded transition-all">
-                                <MoreVertical size={14} className="text-slate-400" />
+                                <MoreVertical
+                                  size={14}
+                                  className="text-slate-400"
+                                />
                               </button>
                             </div>
 
@@ -418,7 +453,9 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
                               <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-1 text-slate-400">
                                   <Grid3X3 size={12} />
-                                  <span>{table.rows?.toLocaleString() || 0} rows</span>
+                                  <span>
+                                    {table.rows?.toLocaleString() || 0} rows
+                                  </span>
                                 </div>
                                 <div className="flex items-center gap-1 text-slate-400">
                                   <Database size={12} />
@@ -437,9 +474,14 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
                     </>
                   ) : (
                     <div className="text-center py-12">
-                      <Table size={48} className="text-slate-600 mx-auto mb-4" />
+                      <Table
+                        size={48}
+                        className="text-slate-600 mx-auto mb-4"
+                      />
                       <h3 className="text-lg font-medium text-slate-400 mb-2">
-                        {searchQuery ? "No Tables Found" : "No Tables Available"}
+                        {searchQuery
+                          ? "No Tables Found"
+                          : "No Tables Available"}
                       </h3>
                       <p className="text-slate-500">
                         {searchQuery
@@ -458,18 +500,26 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
                         Relation Diagram (drag to move, scroll to zoom)
                       </div>
                       <div style={{ height: 600, background: "#0f172a" }}>
-                      <ReactFlow nodes={diagramNodes} edges={diagramEdges} fitView>
-  <Background color="#334155" gap={16} />
-  <Controls />
-</ReactFlow>
-
+                        <ReactFlow
+                          nodes={diagramNodes}
+                          edges={diagramEdges}
+                          fitView
+                        >
+                          <Background color="#f88629" gap={16} />
+                          <Controls />
+                        </ReactFlow>
                       </div>
                     </div>
                   ) : (
                     <div className="text-center py-12">
-                      <GitBranch size={48} className="text-slate-600 mx-auto mb-4" />
+                      <GitBranch
+                        size={48}
+                        className="text-slate-600 mx-auto mb-4"
+                      />
                       <h3 className="text-lg font-medium text-slate-400 mb-2">
-                        {searchQuery ? "No Relations Found" : "No Relations Available"}
+                        {searchQuery
+                          ? "No Relations Found"
+                          : "No Relations Available"}
                       </h3>
                       <p className="text-slate-500">
                         {searchQuery
@@ -484,6 +534,6 @@ const { diagramNodes, diagramEdges } = useMemo(() => {
           )}
         </div>
       </div>
-    </div> 
+    </div>
   );
 }

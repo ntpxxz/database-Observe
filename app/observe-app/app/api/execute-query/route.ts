@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
 
     // ✅ Check if query is read-only BEFORE executing
     if (!isReadOnlySQL(query)) {
+      console.warn("[Manual Query] Invalid query detected:", query);
       return NextResponse.json(
         { message: "Only read-only queries are allowed." },
         { status: 403 },

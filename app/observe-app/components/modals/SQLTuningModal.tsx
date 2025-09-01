@@ -1,5 +1,5 @@
-import React, { FC, useEffect } from "react";
-import { X, ClipboardCopy } from "lucide-react";
+import React, { FC, useEffect, useState } from "react";
+import { X, Clipboard, ClipboardCheck } from "lucide-react";
 
 interface SQLTuningModalProps {
   isOpen: boolean;
@@ -14,7 +14,14 @@ export const SQLTuningModal: FC<SQLTuningModalProps> = ({
   suggestion,
   onClose,
 }) => {
-  
+  const [copied, setCopied] = useState(false);
+  const [aiCopied, setAiCopied] = useState(false);
+
+  useEffect(() => {
+    setCopied(false);
+    setAiCopied(false);
+  }, [suggestion]);
+
   useEffect(() => {
     const handleEsc = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -32,10 +39,18 @@ export const SQLTuningModal: FC<SQLTuningModalProps> = ({
   }, [isOpen, onClose]);
   if (!isOpen) return null;
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(query);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (error: unknown) {
+      console.error("Failed to copy query:", error);
+      alert(
+        `Failed to copy query: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
   };
-
   return (
     <div
       className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 overflow-auto"
@@ -61,12 +76,16 @@ export const SQLTuningModal: FC<SQLTuningModalProps> = ({
           <div className="flex justify-between items-center mb-1">
             <h3 className="text-sm font-semibold text-slate-400">Your Query</h3>
             <button
-              className="text-xs text-blue-400 hover:text-blue-200"
-              onClick={() => copyToClipboard(query)}
-            >
-              <ClipboardCopy className="inline w-4 h-4 mr-1" />
-              Copy
-            </button>
+                onClick={handleCopy}
+                className="flex items-center gap-1 text-sm text-cyan-300 hover:text-cyan-100"
+              >
+                {copied ? (
+                  <ClipboardCheck size={16} />
+                ) : (
+                  <Clipboard size={16} />
+                )}
+                {copied ? "Copied!" : "Copy"}
+              </button>
           </div>
           <pre className="bg-slate-900 text-cyan-300 p-3 rounded overflow-auto text-sm font-mono border border-slate-700 max-h-40">
             {query}
@@ -78,13 +97,31 @@ export const SQLTuningModal: FC<SQLTuningModalProps> = ({
           <div className="flex justify-between items-center mb-1">
             <h3 className="text-sm font-semibold text-slate-400">AI Suggestion</h3>
             {suggestion && (
-              <button
-                className="text-xs text-green-400 hover:text-green-200"
-                onClick={() => copyToClipboard(suggestion)}
-              >
-                <ClipboardCopy className="inline w-4 h-4 mr-1" />
-                Copy
-              </button>
+             <button
+                  className="text-xs text-green-400 hover:text-green-200"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(suggestion);
+                      setAiCopied(true);
+                      setTimeout(() => setAiCopied(false), 1500);
+                    } catch (e) {
+                      console.error("Copy failed:", e);
+                    }
+                  }}
+                  aria-label="Copy AI suggestion"
+                >
+                  {aiCopied ? (
+                    <>
+                      <ClipboardCheck className="inline w-4 h-4 mr-1" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Clipboard className="inline w-4 h-4 mr-1" />
+                      Copy
+                    </>
+                  )}
+                </button>
             )}
           </div>
           {suggestion ? (

@@ -1,4 +1,4 @@
-// mssqlDriver.ts (Refactored)
+// mssqlDriver.ts (Updated with accurate memory metrics)
 
 import sql, { ConnectionPool, IResult } from "mssql";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/types";
 import { SQL_QUERIES } from "@/lib/sqlQueries";
 import { PROBLEMATIC_MSSQL_WAIT_TYPES } from "@/lib/sqlQueries";
+import { QueryData, DatabaseRow } from "@/types";
 
 // -----------------------------------------------------------------------------
 // Constants
@@ -19,61 +20,6 @@ import { PROBLEMATIC_MSSQL_WAIT_TYPES } from "@/lib/sqlQueries";
 const HIGH_TEMPDB_USAGE_MB = 100;
 const LONG_RUNNING_THRESHOLD_MS = 5000;
 
-// -----------------------------------------------------------------------------
-// Local Types
-// -----------------------------------------------------------------------------
-interface QueryData {
-  session_id?: number | string;
-  blocking_session_id?: number;
-  process_id_1?: number;
-  process_id_2?: number;
-  query_1?: string;
-  query_2?: string;
-  current_query?: string;
-  query_text?: string;
-  blocking_query?: string;
-  query?: string;
-  details?: { query?: string };
-  total_elapsed_time?: number;
-  percent_complete?: number;
-  blocker_login?: string;
-  blocked_login?: string;
-  blocked_session_id?: number;
-  wait_duration_ms?: number;
-  deadlock_time?: string;
-  usage_mb?: number;
-  login_name?: string;
-  mean_exec_time_ms?: number;
-  duration_ms?: number;
-  calls?: number;
-  program_name?: string;
-  client_net_address?: string;
-  status?: string;
-  user_name?: string;
-  allocated_space_mb?: number;
-  used_space_mb?: number;
-  wait_type?: string;
-  wait_time?: number;
-  wait_time_ms?: number;
-  waiting_tasks_count?: number;
-  resource_description?: string;
-  victim_session_id?: string;
-  resource?: string;
-  mode?: string;
-  process_list?: any[];
-}
-
-interface DatabaseRow {
-  name: string;
-  sizeMB?: number;
-  state_desc?: string;
-  recovery_model_desc?: string;
-  compatibility_level?: number;
-  collation_name?: string;
-  create_date?: Date;
-}
-
-// -----------------------------------------------------------------------------
 // Utilities & Helpers
 // -----------------------------------------------------------------------------
 
@@ -311,6 +257,55 @@ const LIST_DATABASES_QUERY = `
   ORDER BY name
 `;
 
+// Enhanced memory queries for accurate metrics
+const ENHANCED_MEMORY_QUERY = `
+  SELECT 
+    -- Current memory usage
+    (SELECT cntr_value / 1024 
+     FROM sys.dm_os_performance_counters 
+     WHERE counter_name = 'Total Server Memory (KB)' 
+       AND object_name LIKE '%Memory Manager%') AS used_memory_mb,
+    
+    -- Target memory (what SQL Server wants to use)
+    (SELECT cntr_value / 1024 
+     FROM sys.dm_os_performance_counters 
+     WHERE counter_name = 'Target Server Memory (KB)' 
+       AND object_name LIKE '%Memory Manager%') AS target_memory_mb,
+    
+    -- Max server memory setting
+    (SELECT CAST(value_in_use AS FLOAT)
+     FROM sys.configurations 
+     WHERE name = 'max server memory (MB)') AS max_server_memory_mb,
+    
+    -- Physical memory available on the system
+    (SELECT physical_memory_kb / 1024 
+     FROM sys.dm_os_sys_info) AS physical_memory_mb,
+    
+    -- Process memory usage
+    (SELECT physical_memory_in_use_kb / 1024
+     FROM sys.dm_os_process_memory) AS process_memory_mb
+`;
+
+const ENHANCED_CPU_QUERY = `
+  -- Get CPU usage from ring buffer (most accurate)
+  SELECT TOP(1)
+    100 - record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', 'int') AS cpu_usage_percent
+  FROM (
+    SELECT TOP(2) CONVERT(xml, record) as record, timestamp
+    FROM sys.dm_os_ring_buffers 
+    WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR'
+      AND record like N'%<SystemHealth>%'
+    ORDER BY timestamp DESC
+  ) AS x
+  ORDER BY timestamp DESC
+`;
+
+const MAX_CONNECTIONS_QUERY = `
+  SELECT 
+    @@MAX_CONNECTIONS as max_connections,
+    (SELECT CAST(value_in_use AS int) FROM sys.configurations WHERE name = 'user connections') as configured_user_connections
+`;
+
 // -----------------------------------------------------------------------------
 // Driver
 // -----------------------------------------------------------------------------
@@ -364,11 +359,10 @@ const mssqlDriver = {
   },
 
   getDatabases: async (wrappedPool: AnyPool): Promise<string[]> => {
-    // คงไว้เพื่อไม่พัง backward compat; ใช้ query เดียวกับ listDatabases
     return mssqlDriver.listDatabases(wrappedPool);
   },
 
-  // Metrics
+  // Enhanced getMetrics with proper memory/CPU/connections handling
   getMetrics: async (wrappedPool: AnyPool): Promise<Partial<Metrics>> => {
     if (wrappedPool.type !== "mssql") throw new Error("Invalid pool type for MSSQL driver.");
     const pool = wrappedPool.pool;
@@ -376,8 +370,9 @@ const mssqlDriver = {
     const results = await Promise.allSettled([
       pool.request().query(SQL_QUERIES.connections),
       pool.request().query(SQL_QUERIES.cacheHitRate),
-      pool.request().query(SQL_QUERIES.serverMemoryUsage),
-      pool.request().query(SQL_QUERIES.cpuPressure),
+      pool.request().query(ENHANCED_MEMORY_QUERY),
+      pool.request().query(ENHANCED_CPU_QUERY),
+      pool.request().query(MAX_CONNECTIONS_QUERY),
       pool.request().query(SQL_QUERIES.dbSize),
       pool.request().input("threshold", sql.Int, LONG_RUNNING_THRESHOLD_MS).query(SQL_QUERIES.longRunningQueries),
       pool.request().query(SQL_QUERIES.blockingQueries),
@@ -390,16 +385,17 @@ const mssqlDriver = {
     const [
       connectionsResult,
       cacheHitRateResult,
-      serverMemoryUsage,
-      cpuPressureResult,
+      memoryResult,
+      cpuResult,
+      maxConnectionsResult,
       dbSizeResult,
     ] = results;
 
-    const running = mapRecordset(results[5]) as QueryData[];
-    const blocking = mapRecordset(results[6]) as QueryData[];
-    const slowHist = mapRecordset(results[7]) as QueryData[];
-    const deadlocks = mapRecordset(results[8]) as QueryData[];
-    const tempdb = mapRecordset(results[9]) as QueryData[];
+    const running = mapRecordset(results[6]) as QueryData[];
+    const blocking = mapRecordset(results[7]) as QueryData[];
+    const slowHist = mapRecordset(results[8]) as QueryData[];
+    const deadlocks = mapRecordset(results[9]) as QueryData[];
+    const tempdb = mapRecordset(results[10]) as QueryData[];
 
     const insights = generateInsights({
       runningQueries: running,
@@ -409,34 +405,74 @@ const mssqlDriver = {
       tempDbUsage: tempdb,
     });
 
-    const connections = mapRecordset(connectionsResult)[0]?.connection_count ?? 0;
-    const cacheHit = mapRecordset(cacheHitRateResult)[0]?.cache_hit_ratio_percent ?? 0;
+    // Extract metrics with proper fallbacks
+    const connections = toNum(mapRecordset(connectionsResult)[0]?.connection_count);
+    const cacheHit = safePct(mapRecordset(cacheHitRateResult)[0]?.cache_hit_ratio_percent);
+    
+    // Enhanced memory metrics
+    const memoryData = mapRecordset(memoryResult)[0];
+    const usedMemoryMB = toNum(memoryData?.used_memory_mb || memoryData?.process_memory_mb);
+    const targetMemoryMB = toNum(memoryData?.target_memory_mb);
+    const maxMemoryMB = toNum(memoryData?.max_server_memory_mb);
+    const physicalMemoryMB = toNum(memoryData?.physical_memory_mb);
+    
+    // Use max server memory as the ceiling, fallback to target, then physical
+    const memoryMaxMB = maxMemoryMB > 0 ? maxMemoryMB : (targetMemoryMB > 0 ? targetMemoryMB : physicalMemoryMB);
 
-    const memoryUsedMb =
-      serverMemoryUsage.status === "fulfilled"
-        ? toNum(serverMemoryUsage.value.recordset?.[0]?.used_memory_mb)
-        : 0;
+    // Enhanced CPU metrics
+    const cpuData = mapRecordset(cpuResult)[0];
+    const cpuUsagePercent = toNum(cpuData?.cpu_usage_percent);
 
-    const cpuUsagePct =
-      cpuPressureResult.status === "fulfilled"
-        ? Math.round(100 - (cpuPressureResult.value.recordset?.[0]?.cpu_pressure_percent ?? 0))
-        : undefined;
+    // Enhanced connection metrics
+    const maxConnData = mapRecordset(maxConnectionsResult)[0];
+    const maxConnections = toNum(maxConnData?.max_connections || maxConnData?.configured_user_connections);
 
-    const totalDbSizeMb = mapRecordset(dbSizeResult)[0]?.total_size_mb ?? 0;
+    const totalDbSizeMB = toNum(mapRecordset(dbSizeResult)[0]?.total_size_mb);
+
+    // Debug logging
+    console.log("[MSSQL Driver] Enhanced Metrics:", {
+      connections: { current: connections, max: maxConnections },
+      cpu: { usage: cpuUsagePercent },
+      memory: { 
+        used: usedMemoryMB, 
+        target: targetMemoryMB,
+        max: maxMemoryMB,
+        physical: physicalMemoryMB,
+        calculated_max: memoryMaxMB 
+      },
+      cache: { hitRate: cacheHit },
+      disk: { size: totalDbSizeMB }
+    });
 
     return {
-      kpi: {
-        connections: toNum(connections),
-        cpu: cpuUsagePct,
-        memory: memoryUsedMb,
-        disk: toNum(totalDbSizeMb),
+     
+        kpi: {
+    connections,
+    cpu: cpuUsagePercent > 0 ? Math.round(cpuUsagePercent) : undefined,
+    // ใช้ได้: used ของ SQL (MB)
+    memory: usedMemoryMB > 0 ? Math.round(usedMemoryMB) : undefined,
+    disk: Math.round(totalDbSizeMB),
+    maxConnections: maxConnections > 0 ? maxConnections : undefined,
       },
       stats: {
-        cache_hit_rate: safePct(cacheHit),
-        databaseSize: Math.round(toNum(totalDbSizeMb)),
+        cache_hit_rate: cacheHit,
+        databaseSize: Math.round(totalDbSizeMB),
+    
+        cpu_usage_percent: Math.round(cpuUsagePercent),
+    
+        memory_used_mb: Math.round(usedMemoryMB),
+        memory_total_mb: Math.round(physicalMemoryMB),   // <-- แก้จาก memoryMaxMB เป็น physicalMemoryMB
+    
+        memory_target_mb: Math.round(targetMemoryMB),
+    
+        physical_memory_mb: Math.round(physicalMemoryMB),
+    
+        sql_max_memory_mb: Math.round(memoryMaxMB),
+    
+        max_connections: maxConnections,
       },
       performanceInsights: insights,
-      databaseInfo: (mapRecordset(results[10]) as DatabaseRow[]).map((db) => ({
+      databaseInfo: (mapRecordset(results[11]) as DatabaseRow[]).map((db) => ({
         name: db.name || "UNKNOWN",
         sizeMB: db.sizeMB ?? 0,
         state: db.state_desc || "ONLINE",
@@ -593,13 +629,13 @@ const mssqlDriver = {
         tableSchema: String(row.table_schema || row.tableSchema || ""),
         tableName: String(row.table_name || row.tableName || ""),
       })),
-      tableOptimizations: [], // ไม่มีข้อมูลแมพชัดเจนจากชุด query ที่ให้มา
+      tableOptimizations: [],
       indexSuggestions: [],
       queryRewrites: [],
     };
   },
 
-  // Health (ยังคง behavior เดิมแต่ tidy up)
+  // Health analysis
   analyzeDatabaseHealth: async (wrappedPool: AnyPool): Promise<Record<string, unknown>> => {
     if (wrappedPool.type !== "mssql") throw new Error("Invalid pool type for MSSQL driver.");
     const pool = wrappedPool.pool;
@@ -643,7 +679,7 @@ const mssqlDriver = {
     return { message: "This function is a placeholder." };
   },
 
-  // Performance Insights (shortcut to metrics’ insights)
+  // Performance Insights (shortcut to metrics' insights)
   getPerformanceInsights: async (pool: AnyPool): Promise<PerformanceInsight[] | { error: string }> => {
     try {
       const metrics = await mssqlDriver.getMetrics(pool);

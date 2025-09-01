@@ -1,16 +1,15 @@
 "use client";
 
 import React, { FC, useState, useEffect, useCallback } from "react";
-import { ManagementPanel } from "@/components/shared/forms/ManagementPanel";
+import { ManagementPanel } from "@/components/layout/ManagementPanel";
 import { ServerDetailView } from "@/components/dashboard/ServerDetailView";
-import { AddServerModal } from "@/components/shared/forms/AddServerModal";
-import { EditDatabaseModal } from "@/components/shared/forms/EditDatabaseModal";
-import { ServerDetailModal } from "@/components/shared/forms/ServerDetailModal";
+import { AddServerModal } from "@/components/modals/AddServerModal";
+import { EditDatabaseModal } from "@/components/modals/EditDatabaseModal";
+import { ServerDetailModal } from "@/components/modals/ServerDetailModal";
 import { useServerContext } from "@/app/context/Servercontext";
 import {
-  DatabaseInventory,
   Metrics,
-  ServerFormData,
+  DatabaseInventory,
   PerformanceInsight,
 } from "@/types";
 import { AlertCircle } from "lucide-react";
@@ -83,7 +82,7 @@ const useHardwareMetrics = (server: DatabaseInventory | null) => {
 };
 
 const useQueryInsights = (server: DatabaseInventory | null) => {
-  const [insights, setInsights] = useState<PerformanceInsight | null>(null);
+  const [insights, setInsights] = useState<PerformanceInsight[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -97,7 +96,7 @@ const useQueryInsights = (server: DatabaseInventory | null) => {
       );
       if (!res.ok) throw new Error("Failed to fetch query insights");
 
-      const json: PerformanceInsight = await res.json();
+      const json: PerformanceInsight[] = await res.json();
       setInsights(json);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -165,7 +164,7 @@ const InventoryPage: FC = () => {
       }
     : null;
 
-  const handleAddServer = async (data: ServerFormData) => {
+  const handleAddServer = async (data: DatabaseInventory) => {
     try {
       const response = await fetch("/api/inventory", {
         method: "POST",
@@ -188,8 +187,10 @@ const InventoryPage: FC = () => {
         `Error adding server: ${message || "An unknown error occurred."}`,
       );
     } finally {
+      setModal({ type: null })
       await refreshServers();
-      setModal({ type: null });
+      
+  
     }
   };
 
@@ -208,14 +209,17 @@ const InventoryPage: FC = () => {
         );
         return;
       }
+      alert("Server Update successfully!");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
       alert(
         `Error updating server: ${message || "An unknown error occurred."}`,
       );
-    } finally {
-      await refreshServers();
-      setModal({ type: null });
+    } finally {     
+      setModal({ type: null }); 
+      await refreshServers();      
+    
+      
     }
   };
 
@@ -232,6 +236,7 @@ const InventoryPage: FC = () => {
           );
           return;
         }
+        alert("Server deleted successfully!");
       } catch (error: unknown) {
         const message =
           error instanceof Error ? error.message : "Unknown error";
@@ -264,23 +269,24 @@ const InventoryPage: FC = () => {
       ) : activeServer ? (
         <>
           <ServerDetailView
-            server={activeServer}
-            metrics={mergedMetrics}
-            isLoading={isMetricsLoading}
-            error={metricsError}
-            onRefresh={async (tab: string) => {
-              if (tab === "performance") {
-                await Promise.all([refreshMetrics(), refreshServers()]);
-              } else if (tab === "insights") {
-                await refreshInsights();
-              } else if (tab === "hardware") {
-                await refreshHardware();
-              }
-            }}
-            insights={insights}
-            insightsLoading={insightLoading}
-            insightError={insightError}
-          />
+              server={activeServer}
+              metrics={mergedMetrics}
+              isLoading={isMetricsLoading}
+              error={metricsError}
+              onRefresh={async (tab: string) => {
+                if (tab === "performance") {
+                  await Promise.all([refreshMetrics(), refreshServers()]);
+                } else if (tab === "insights") {
+                  await refreshInsights();
+                } else if (tab === "hardware") {
+                  await refreshHardware();
+                }
+              } }
+              insights={insights}
+              insightsLoading={insightLoading}
+              insightError={insightError} onRefreshKPI={function (): Promise<void> {
+                throw new Error("Function not implemented.");
+              } }          />
         </>
       ) : (
         <ManagementPanel

@@ -50,7 +50,7 @@ export const Navbar: FC<NavbarProps> = ({
     if (activeServer) {
       return (
         <div className="flex items-center space-x-2 text-sm">
-          <span className="text-slate-400">Database Servers</span>
+          <span className="text-slate-400">Database Inventory</span>
           <span className="text-slate-500">/</span>
           <span className="text-slate-300">{activeServer.systemName}</span>
           <span className="text-slate-500">/</span>
