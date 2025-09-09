@@ -17,8 +17,6 @@ import {
   Search,
   X,
   Download,
-  Play,
-  Terminal,
   Bot,
 } from "lucide-react";
 import { PerformanceInsight } from "@/types";
@@ -55,13 +53,12 @@ const InsightIcon: FC<{ type: string }> = ({ type }) => {
     long_running_query: (
       <Hourglass size={16} className="text-yellow-400 mr-2" />
     ),
-
     blocking_query: <Lock size={16} className="text-red-500 mr-2" />,
     deadlock_event: <Skull size={16} className="text-rose-500 mr-2" />,
     high_tempdb_usage: <Database size={16} className="text-cyan-400 mr-2" />,
     wait_stats: <Activity size={16} className="text-purple-400 mr-2" />,
     error: <AlertCircle size={16} className="text-red-400 mr-2" />,
-    running_query: <Play size={16} className="text-green-400 mr-2" />,
+    running_query: <Activity size={16} className="text-green-400 mr-2" />,
   };
   return (
     iconMap[type] ?? <HelpCircle size={16} className="text-slate-500 mr-2" />
@@ -159,6 +156,47 @@ function getNumericValue(insight: any, key: string): number {
   return 0;
 }
 
+// สร้าง unique key ที่เสถียรสำหรับแต่ละ insight
+const createStableKey = (insight: any, globalIndex: number): string => {
+  // ลองใช้ field ที่มีค่าเฉพาะตัวก่อน
+  const uniqueFields = [
+    insight.id,
+    insight.session_id,
+    insight.spid,
+    insight.request_id,
+    insight.details?.id,
+  ].filter(field => 
+    field !== null && 
+    field !== undefined && 
+    String(field).trim() !== "" && 
+    String(field).toLowerCase() !== "n/a"
+  );
+
+  if (uniqueFields.length > 0) {
+    return `insight-${uniqueFields.join('-')}-${globalIndex}`;
+  }
+
+  // หากไม่มี unique field ให้สร้าง hash จากข้อมูลสำคัญ
+  const keyData = [
+    insight.type || 'unknown',
+    insight.timestamp || insight.start_time || '',
+    extractQueryText(insight).substring(0, 50),
+    getNumericValue(insight, "duration"),
+    getNumericValue(insight, "count"),
+    globalIndex // ใช้ global index
+  ].join('|');
+
+  // สร้าง simple hash
+  let hash = 0;
+  for (let i = 0; i < keyData.length; i++) {
+    const char = keyData.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  
+  return `insight-${Math.abs(hash)}-${globalIndex}`;
+};
+
 // CSV Export function
 const exportToCSV = (
   insights: any[],
@@ -221,23 +259,33 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   insights,
   serverName,
   isLoading = false,
-  onExecuteQuery,
   onAskAi,
 }) => {
-  const [selectedInsight, setSelectedInsight] =
-    useState<PerformanceInsight | null>(null);
+  const [selectedInsight, setSelectedInsight] = useState<PerformanceInsight | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
-  const [showManualQuery, setShowManualQuery] = useState(false);
-  const [manualQuery, setManualQuery] = useState("");
-  const [queryResult, setQueryResult] = useState<unknown>(null);
-  const [isExecutingQuery, setIsExecutingQuery] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const ROWS_PER_PAGE = 10;
+  
+  // Reset states เมื่อ insights เปลี่ยน
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedInsight(null);
+  }, [insights, serverName]);
+
+  // Normalize insights data
   const normalizedInsights = useMemo(() => {
-    return Array.isArray(insights) ? insights : [];
-  }, [insights]); // insights เป็น dependency ถ้า insights เปลี่ยน normalizedInsights จะถูกคำนวณใหม่
+    if (!insights) return [];
+    if (!Array.isArray(insights)) return [];
+    
+    // สร้าง insights ที่มี global index ที่เสถียร
+    return insights.map((insight, globalIndex) => ({
+      ...insight,
+      _globalIndex: globalIndex,
+      _stableKey: createStableKey(insight, globalIndex)
+    }));
+  }, [insights]);
 
   // Sort configuration
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -255,6 +303,11 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     maxCount: Number.MAX_VALUE,
   });
 
+  // Reset pagination เมื่อ filter หรือ sort เปลี่ยน
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterConfig, sortConfig]);
+
   // Get unique types for filter dropdown
   const availableTypes = useMemo(() => {
     const types = new Set(
@@ -264,8 +317,8 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
   }, [normalizedInsights]);
 
   // Apply filters and sorting
-  const filteredAndSortedInsights = useMemo(() => {
-    const filtered = normalizedInsights.filter((insight) => {
+  const processedInsights = useMemo(() => {
+    let filtered = normalizedInsights.filter((insight) => {
       // Type filter
       if (filterConfig.type !== "all" && insight.type !== filterConfig.type) {
         return false;
@@ -346,12 +399,28 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     return filtered;
   }, [normalizedInsights, filterConfig, sortConfig]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-    setSelectedInsight(null);
-  }, [filteredAndSortedInsights, serverName]);
+  // Pagination calculations
+  const totalPages = Math.ceil(processedInsights.length / ROWS_PER_PAGE);
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), Math.max(1, totalPages));
+  const startIndex = (safeCurrentPage - 1) * ROWS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ROWS_PER_PAGE, processedInsights.length);
+  const currentInsights = processedInsights.slice(startIndex, endIndex);
 
-  console.log("Filtered length:", filteredAndSortedInsights.length);
+  // Sync currentPage if it's out of bounds
+  useEffect(() => {
+    if (currentPage !== safeCurrentPage) {
+      setCurrentPage(safeCurrentPage);
+    }
+  }, [currentPage, safeCurrentPage]);
+
+  console.log(`Pagination Debug:
+    Total insights: ${processedInsights.length}
+    Total pages: ${totalPages}
+    Current page: ${safeCurrentPage}
+    Start index: ${startIndex}
+    End index: ${endIndex}
+    Current insights: ${currentInsights.length}
+  `);
 
   // Handle sorting
   const handleSort = (field: SortField) => {
@@ -360,24 +429,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
       direction:
         prev.field === field && prev.direction === "asc" ? "desc" : "asc",
     }));
-  };
-  // Handle Execute session
-
-  const handleExecuteQuery = async () => {
-    if (!onExecuteQuery || !manualQuery.trim()) {
-      
-      return;    }
-
-    try {
-      setIsExecutingQuery(true);
-      const result = await onExecuteQuery(manualQuery);
-      setQueryResult(result);
-    } catch (error) {
-      console.error('Error executing query:', error);
-      setQueryResult({ error: String(error) });
-    } finally {
-      setIsExecutingQuery(false);
-    }
   };
 
   const handleAskAi = async (query: string) => {
@@ -408,6 +459,12 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     ) : (
       <ArrowDown size={14} className="text-blue-400" />
     );
+  };
+
+  const handlePageChange = (newPage: number) => {
+    const validPage = Math.min(Math.max(1, newPage), totalPages);
+    console.log(`Changing page from ${currentPage} to ${validPage}`);
+    setCurrentPage(validPage);
   };
 
   if (isLoading) {
@@ -445,15 +502,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
     );
   }
 
-  const totalPages = Math.ceil(
-    filteredAndSortedInsights.length / ROWS_PER_PAGE
-  );
-  const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
-  const currentInsights = filteredAndSortedInsights.slice(
-    startIndex,
-    startIndex + ROWS_PER_PAGE
-  );
-
   return (
     <div className="space-y-4">
       {/* Action Bar */}
@@ -470,23 +518,11 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
             <Filter size={16} />
             Filters
           </button>
-
-          <button
-            onClick={() => setShowManualQuery(!showManualQuery)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              showManualQuery
-                ? "bg-green-500/20 text-green-300 border border-green-500/50"
-                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-            }`}
-          >
-            <Terminal size={16} />
-            Manual Query
-          </button>
         </div>
 
         <div className="flex gap-2">
           <button
-            onClick={() => exportToCSV(filteredAndSortedInsights)}
+            onClick={() => exportToCSV(processedInsights)}
             className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors"
           >
             <Download size={16} />
@@ -528,7 +564,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                   size={16}
                   className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"
                 />
-
                 <input
                   type="text"
                   placeholder="Search in queries..."
@@ -564,7 +599,7 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
 
           <div className="flex justify-between items-center">
             <span className="text-sm text-slate-400">
-              Showing {filteredAndSortedInsights.length} of{" "}
+              Showing {processedInsights.length} of{" "}
               {normalizedInsights.length} insights
             </span>
             <button
@@ -584,83 +619,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
               Clear Filters
             </button>
           </div>
-        </div>
-      )}
-
-      {showManualQuery && (
-        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-4">
-          {/* Query Input */}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              SQL Query
-            </label>
-            <textarea
-              value={manualQuery}
-              onChange={(e) => setManualQuery(e.target.value)}
-              placeholder="Enter your SQL query here..."
-              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 font-mono"
-              rows={4}
-            />
-          </div>
-
-          {/* Execute Button */}
-          <div className="flex gap-2">
-            <button
-              onClick={handleExecuteQuery}
-              disabled={isExecutingQuery || !manualQuery.trim()}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              {isExecutingQuery ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Executing...
-                </>
-              ) : (
-                <>
-                  <Play size={16} />
-                  Execute Query
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Query Result */}
-          {queryResult !== null && queryResult !== undefined && (
-            <div className="mt-4">
-              <h4 className="text-sm font-medium text-slate-300 mb-2">
-                Query Result:
-              </h4>
-              <pre className="bg-slate-900 border border-slate-600 rounded-lg p-3 text-xs text-slate-200 overflow-auto max-h-60 whitespace-pre-wrap">
-                {(() => {
-                  try {
-                    if (
-                      typeof queryResult === "object" &&
-                      queryResult !== null &&
-                      "error" in queryResult
-                    ) {
-                      const errorMessage = (queryResult as any).error;
-                      return (
-                        <span className="text-red-300">
-                          {typeof errorMessage === "string"
-                            ? errorMessage
-                            : JSON.stringify(errorMessage, null, 2)}
-                        </span>
-                      );
-                    }
-
-                    // JSON.stringify ปกติ
-                    return JSON.stringify(queryResult, null, 2);
-                  } catch (e) {
-                    return (
-                      <span className="text-red-300">
-                        Failed to render result: {(e as Error).message}
-                      </span>
-                    );
-                  }
-                })()}
-              </pre>
-            </div>
-          )}
         </div>
       )}
 
@@ -709,40 +667,18 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
             </tr>
           </thead>
           <tbody>
-            {currentInsights.map((insight, index) => {
-              // รวบรวมค่าที่เป็นไปได้ทั้งหมดสำหรับ ID ที่ไม่ซ้ำกัน
-              const potentialIds = [
-                insight.id,
-                insight.session_id,
-                insight.spid,
-              ];
-
-              // ค้นหา ID ที่ไม่ซ้ำกันและถูกต้องตัวแรก โดยกรองค่าที่ไม่พึงประสงค์ออก
-              const foundUniqueId = potentialIds.find(
-                (id) =>
-                  id !== null &&
-                  id !== undefined &&
-                  id !== "" && // กรองสตริงว่างออก
-                  String(id).trim().toLowerCase() !== "n/a" // กรอง "n/a" ทุกรูปแบบ
-              );
-
-              // ใช้ ID ที่พบ หรือ fallback ไปใช้ index หากไม่มี ID ที่ถูกต้อง
-              const insightId = foundUniqueId
-                ? String(foundUniqueId)
-                : `insight-${index}`;
-              const displayType =
-                INSIGHT_TYPE_MAP[insight.type] || insight.type || "Query";
+            {currentInsights.map((insight) => {
+              const displayType = INSIGHT_TYPE_MAP[insight.type] || insight.type || "Query";
               const queryText = extractQueryText(insight);
               const timeValue = getNumericValue(insight, "duration");
-              const durationDisplay =
-                typeof timeValue === "number" && timeValue > 1000
-                  ? `${(timeValue / 1000).toFixed(2)}s`
-                  : `${timeValue}ms`;
+              const durationDisplay = typeof timeValue === "number" && timeValue > 1000
+                ? `${(timeValue / 1000).toFixed(2)}s`
+                : `${timeValue}ms`;
               const callCount = getNumericValue(insight, "count");
 
               return (
                 <tr
-                  key={insightId}
+                  key={insight._stableKey}
                   className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors"
                 >
                   <td className="px-4 py-3">
@@ -786,7 +722,6 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
                       >
                         Details
                       </button>
-                    
                     </div>
                   </td>
                 </tr>
@@ -798,30 +733,25 @@ export const PerformanceInsightsTable: FC<PerformanceInsightsTableProps> = ({
         {/* Pagination */}
         <div className="flex justify-between items-center px-4 py-3 text-sm text-slate-400 bg-slate-900/30">
           <span>
-            Showing {startIndex + 1}-
-            {Math.min(
-              startIndex + ROWS_PER_PAGE,
-              filteredAndSortedInsights.length
-            )}{" "}
-            of {filteredAndSortedInsights.length} insights
+            Showing {currentInsights.length > 0 ? startIndex + 1 : 0}-
+            {endIndex}{" "}
+            of {processedInsights.length} insights
           </span>
           <div className="flex items-center gap-4">
             <span>
-              Page {currentPage} of {totalPages}
+              Page {safeCurrentPage} of {totalPages || 1}
             </span>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
+                onClick={() => handlePageChange(safeCurrentPage - 1)}
+                disabled={safeCurrentPage === 1 || totalPages === 0}
                 className="p-1 rounded-md hover:bg-slate-700 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft size={20} />
               </button>
               <button
-                onClick={() =>
-                  setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                }
-                disabled={currentPage === totalPages}
+                onClick={() => handlePageChange(safeCurrentPage + 1)}
+                disabled={safeCurrentPage === totalPages || totalPages === 0}
                 className="p-1 rounded-md hover:bg-slate-700 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronRight size={20} />

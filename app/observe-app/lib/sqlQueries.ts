@@ -160,27 +160,82 @@ WHERE name = 'max server memory (MB)';
     CROSS APPLY sys.dm_exec_sql_text(blocked_req.sql_handle) blocked_text
     WHERE blocked.blocking_session_id != 0`,
 
-  slowQueriesHistorical: `
-    /* ObserveApp-Monitor:SlowQueriesHistorical */
-    SELECT TOP 20
-      qs.query_hash,
-      qs.execution_count as calls,
-      qs.total_elapsed_time / qs.execution_count / 1000 as mean_exec_time_ms,
-      qs.total_logical_reads / qs.execution_count as mean_logical_reads,
-      qs.total_physical_reads / qs.execution_count as mean_physical_reads,
-      qs.last_execution_time,
-      SUBSTRING(qt.text, (qs.statement_start_offset/2)+1,
-        ((CASE qs.statement_end_offset
-          WHEN -1 THEN DATALENGTH(qt.text)
-          ELSE qs.statement_end_offset
-          END - qs.statement_start_offset)/2)+1) as query_text
-    FROM sys.dm_exec_query_stats qs
-    CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
-    WHERE qs.total_elapsed_time / qs.execution_count > 1000000 -- 1 second
-    ORDER BY mean_exec_time_ms DESC`,
-
-  // Removed duplicate tempdbSessionUsage definition
-
+// SIMPLIFIED: Real-time Slow Queries Only - เฉพาะคิวรีที่ช้า
+slowQueriesRealtime: `
+  /* ObserveApp-Monitor:SlowQueriesRealtime-Fixed */
+  SELECT TOP 10
+      -- Basic Info
+      r.session_id,
+      r.status,
+      
+      -- Duration (แก้ไข calculation)
+      DATEDIFF(second, r.start_time, GETDATE()) as duration_seconds,
+      CAST(r.total_elapsed_time / 1000.0 as DECIMAL(10,2)) as duration_sec,  -- แก้ไขจาก /3000 เป็น /1000
+      
+      -- Performance Impact
+      CASE 
+          WHEN r.total_elapsed_time > 300000 THEN 'Critical (>5min)'   -- 300,000 ms = 5 min
+          WHEN r.total_elapsed_time > 60000 THEN 'High (>1min)'       -- 60,000 ms = 1 min
+          WHEN r.total_elapsed_time > 30000 THEN 'Medium (>30s)'      -- 30,000 ms = 30 sec
+          ELSE 'Warning (>5s)'
+      END as severity,
+      
+      -- Resource Usage  
+      CAST(r.cpu_time / 1000.0 as DECIMAL(10,2)) as cpu_seconds,   -- แก้ไขจาก /3000 เป็น /1000
+      r.logical_reads,
+      r.total_elapsed_time as elapsed_time_ms,  -- เพิ่มฟิลด์นี้สำหรับ reference
+      
+      -- Query Text (Clean)
+      CASE 
+          WHEN r.statement_start_offset = 0 AND r.statement_end_offset = -1
+          THEN qt.text
+          ELSE 
+              SUBSTRING(qt.text, 
+                  (r.statement_start_offset/2)+1,
+                  CASE WHEN r.statement_end_offset = -1 
+                       THEN LEN(qt.text)
+                       ELSE (r.statement_end_offset - r.statement_start_offset)/2 + 1
+                  END
+              )
+      END as query_text,  -- เปลี่ยนจาก slow_query เป็น query_text เพื่อความสม่ำเสมอ
+      
+      -- Context
+      s.login_name,
+      s.program_name,
+      DB_NAME(r.database_id) as database_name,
+      r.wait_type,
+      
+      -- เพิ่ม fields สำหรับ calculateMeanExecTime ใน generateInsights
+      1 as calls,  -- hardcode เป็น 1 เพราะเป็น running query
+      r.total_elapsed_time as mean_exec_time_ms  -- ใช้ total_elapsed_time เป็น mean
+      
+  FROM sys.dm_exec_requests r
+  INNER JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
+  CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) qt
+  
+  WHERE 1=1
+      -- เฉพาะคิวรี่ที่ช้า (>= 5 วินาที = 5000 ms)
+      AND r.total_elapsed_time >= 5000
+      
+      -- เฉพาะ Active queries
+      AND r.status IN ('running', 'runnable', 'suspended')
+      
+      -- ไม่รวม System processes
+      AND r.session_id > 50
+      AND r.session_id != @@SPID
+      
+      -- กรองเฉพาะ User queries
+      AND qt.text IS NOT NULL
+      AND qt.text NOT LIKE '%sys.dm_%'
+      AND qt.text NOT LIKE '%ObserveApp%'
+      AND qt.text NOT LIKE '%BACKUP%'
+      AND qt.text NOT LIKE '%DBCC%'
+      AND qt.text NOT LIKE '%CHECKDB%'
+      AND qt.text NOT LIKE '%sp_help%'
+      
+  ORDER BY 
+      r.total_elapsed_time DESC  -- เรียงตามความช้า
+`,
   runningQueries: `
     /* ObserveApp-Monitor:RunningQueries */
     SELECT 
@@ -438,7 +493,7 @@ ORDER BY
   },
 
   POSTGRES: {
-    // ค่าประมาณที่เร็ว (ใช้ pg_class.reltuples) + ผูก schema ถูกต้อง
+    // ค่าประมาณที่เร็ว (ใช้ pg_class.reltuples) + ผู้ schema ถูกต้อง
     listTables: `
       SELECT 
         t.table_schema                   AS schema_name,
@@ -535,7 +590,7 @@ export const PROBLEMATIC_MSSQL_WAIT_TYPES = new Set<string>([
 
 // Postgres: ใช้ชื่อกลุ่มที่มักชี้ปัญหา (best-effort; ปรับเพิ่มได้)
 export const PROBLEMATIC_POSTGRES_WAIT_EVENTS = new Set<string>([
-  // ประเภทกว้าง ๆ ที่บ่งชี้ contention/IO
+  // ประเภทกว้างๆ ที่บ่งชี้ contention/IO
   "LWLock",
   "BufferPin",
   "BufferIO",
@@ -546,7 +601,7 @@ export const PROBLEMATIC_POSTGRES_WAIT_EVENTS = new Set<string>([
   "DataFileWrite",
   "WALWrite",
   "WALSync",
-  // ถ้า query ของคุณคืนเป็น wait_event แทนประเภท ให้รองรับด้วย
+  // ถ้า query ของคุณคืน wait_event แทนประเภท ให้รองรับด้วย
   "ClientRead",
   "ClientWrite",
   "Extension",

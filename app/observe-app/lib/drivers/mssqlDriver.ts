@@ -376,7 +376,7 @@ const mssqlDriver = {
       pool.request().query(SQL_QUERIES.dbSize),
       pool.request().input("threshold", sql.Int, LONG_RUNNING_THRESHOLD_MS).query(SQL_QUERIES.longRunningQueries),
       pool.request().query(SQL_QUERIES.blockingQueries),
-      pool.request().query(SQL_QUERIES.slowQueriesHistorical),
+      pool.request().query(SQL_QUERIES.slowQueriesRealtime),
       pool.request().query(SQL_QUERIES.deadlockAnalysis),
       pool.request().query(SQL_QUERIES.tempdbSessionUsage),
       pool.request().query(SQL_QUERIES.databaseInfo),
@@ -491,7 +491,7 @@ const mssqlDriver = {
 
     const results = await Promise.allSettled([
       pool.request().query(SQL_QUERIES.runningQueries),
-      pool.request().query(SQL_QUERIES.slowQueriesHistorical),
+      pool.request().query(SQL_QUERIES.slowQueriesRealtime),
       pool.request().query(SQL_QUERIES.blockingQueries),
       pool.request().query(SQL_QUERIES.waitStats),
       pool.request().query(SQL_QUERIES.deadlockAnalysis),

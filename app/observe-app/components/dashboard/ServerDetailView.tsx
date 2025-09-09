@@ -15,6 +15,11 @@ import {
   AlertTriangle,
   Bell,
   History,
+  Terminal,
+  Play,
+  Table as TableIcon,
+  FileDown,
+  Clipboard,
 } from "lucide-react";
 import { DatabaseTableView } from "./DatabaseTableView";
 import { PerformanceInsightsTable } from "./PerformanceInsightsTable";
@@ -33,8 +38,8 @@ import type {
   AlertLevel,
 } from "@/types";
 
-// Add new tab type for alerts
-type ExtendedTabType = TabType | "alerts";
+// Add new tab type for manual query and alerts
+type ExtendedTabType = TabType | "alerts" | "manual-query";
 
 // Helpers (same as before)
 const mbToGB = (mb?: number | null) =>
@@ -46,9 +51,7 @@ const humanBytesFromMB = (mb?: number | null) => {
   const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   const v = bytes / Math.pow(1024, i);
-  return `${
-    v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)
-  } ${units[i]}`;
+  return `${v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)} ${units[i]}`;
 };
 
 const generateAlertId = (metric: string, level: string): string => {
@@ -68,9 +71,7 @@ const useAlertStatistics = (alertHistory: AlertHistoryItem[]) => {
     const today = alertHistory.filter((a) => a.timestamp >= oneDayAgo).length;
     const thisWeek = alertHistory.filter((a) => a.timestamp >= oneWeekAgo).length;
 
-    const resolvedAlerts = alertHistory.filter(
-      (a) => a.resolved && a.duration
-    );
+    const resolvedAlerts = alertHistory.filter((a) => a.resolved && a.duration);
     const averageResolutionTime =
       resolvedAlerts.length > 0
         ? Math.round(
@@ -164,7 +165,7 @@ const ErrorDisplay: FC<{ error: string; onRetry?: () => void }> = ({
   </div>
 );
 
-// Enhanced TabButton with new alert tab
+// Enhanced TabButton with new manual query tab
 const TabButton: FC<{
   tab: ExtendedTabType;
   activeTab: ExtendedTabType;
@@ -178,10 +179,21 @@ const TabButton: FC<{
         return <BarChart size={16} className="inline mr-2" />;
       case "insights":
         return <AlertCircle size={16} className="inline mr-2" />;
+      case "manual-query":
+        return <Terminal size={16} className="inline mr-2" />;
       case "alerts":
         return <Bell size={16} className="inline mr-2" />;
       default:
         return <ServerIcon size={16} className="inline mr-2" />;
+    }
+  };
+
+  const getTabName = () => {
+    switch (tab) {
+      case "manual-query":
+        return "Manual Query";
+      default:
+        return tab.charAt(0).toUpperCase() + tab.slice(1);
     }
   };
 
@@ -203,7 +215,7 @@ const TabButton: FC<{
       }`}
     >
       {getIcon()}
-      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+      {getTabName()}
       {badgeCount > 0 && (
         <span
           className={`ml-2 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white rounded-full ${
@@ -217,6 +229,306 @@ const TabButton: FC<{
   );
 };
 
+// -------------- New Manual Query Component (Table-enabled) --------------
+const ManualQueryPanel: FC<{
+  serverName?: string;
+  onExecuteQuery?: (query: string) => Promise<any>;
+  onAskAi?: (query: string) => Promise<void>;
+}> = ({ serverName, onExecuteQuery, onAskAi }) => {
+  const [manualQuery, setManualQuery] = useState("");
+  const [queryResult, setQueryResult] = useState<unknown>(null);
+  const [isExecutingQuery, setIsExecutingQuery] = useState(false);
+
+  // new: view + multi result sets
+  const [viewMode, setViewMode] = useState<"table" | "json">("table");
+  const [activeSetIndex, setActiveSetIndex] = useState(0);
+
+  /** ---- helpers ---- **/
+  function extractRowsets(payload: any): Array<Array<Record<string, any>>> {
+    if (!payload) return [];
+
+    // plain array of row objects
+    if (Array.isArray(payload) && payload.every(r => r && typeof r === "object")) {
+      return [payload];
+    }
+    // mssql: recordsets / recordset
+    if (Array.isArray(payload?.recordsets) && payload.recordsets.length) return payload.recordsets;
+    if (Array.isArray(payload?.recordset)) return [payload.recordset];
+
+    // postgres: rows
+    if (Array.isArray(payload?.rows)) return [payload.rows];
+
+    // mysql2: [rows, fields]
+    if (Array.isArray(payload) && payload.length === 2 && Array.isArray(payload[0])) return [payload[0]];
+
+    // generic shapes
+    if (Array.isArray(payload?.data)) return [payload.data];
+    if (Array.isArray(payload?.result)) return [payload.result];
+    if (Array.isArray(payload?.result?.rows)) return [payload.result.rows];
+
+    // { tables: [{rows: [...]}, ...] }
+    if (Array.isArray(payload?.tables)) {
+      const sets = payload.tables
+        .map((t: any) => (Array.isArray(t?.rows) ? t.rows : []))
+        .filter((r: any[]) => r.length);
+      if (sets.length) return sets;
+    }
+    return [];
+  }
+
+  function toCSV(rows: Array<Record<string, any>>): string {
+    if (!rows?.length) return "";
+    const headers = Array.from(rows.reduce((s, r) => {
+      Object.keys(r ?? {}).forEach(k => s.add(k));
+      return s;
+    }, new Set<string>()));
+    const esc = (v: any) => {
+      const s = v == null ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      headers.map(esc).join(","),
+      ...rows.map(r => headers.map(h => esc(r?.[h])).join(",")),
+    ];
+    return lines.join("\n");
+  }
+
+  const rowsets = useMemo(() => extractRowsets(queryResult), [queryResult]);
+  const hasTabular = rowsets.length > 0 && rowsets.some(rs => rs?.length > 0);
+  const activeRows = rowsets[activeSetIndex] ?? [];
+
+  const tableHeaders = useMemo(() => {
+    if (!activeRows?.length) return [] as string[];
+    const keys = new Set<string>();
+    activeRows.forEach(r => Object.keys(r ?? {}).forEach(k => keys.add(k)));
+    return Array.from(keys);
+  }, [activeRows]);
+
+  const handleExecuteQuery = async () => {
+    if (!onExecuteQuery || !manualQuery.trim()) return;
+    try {
+      setIsExecutingQuery(true);
+      const result = await onExecuteQuery(manualQuery);
+      setQueryResult(result);
+      setViewMode("table");
+      setActiveSetIndex(0);
+    } catch (error) {
+      console.error("Error executing query:", error);
+      setQueryResult({ error: String(error) });
+      setViewMode("json");
+    } finally {
+      setIsExecutingQuery(false);
+    }
+  };
+
+  const handleAskAi = async () => {
+    if (!onAskAi || !manualQuery.trim()) return;
+    await onAskAi(manualQuery);
+  };
+
+  const handleDownloadCSV = () => {
+    const csv = toCSV(activeRows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `query_result${rowsets.length > 1 ? `_set${activeSetIndex + 1}` : ""}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCopyJSON = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(queryResult, null, 2));
+    } catch { /* noop */ }
+  };
+
+  return (
+    <div className="space-y-6">
+      <section className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-semibold text-white flex items-center">
+            <Terminal size={20} className="mr-2 text-green-400" />
+            Manual SQL Query Execution
+          </h3>
+          {serverName && (
+            <span className="text-sm text-slate-400">Server: {serverName}</span>
+          )}
+        </div>
+        
+        <div className="space-y-4">
+          {/* Query Input */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              SQL Query
+            </label>
+            <textarea
+              value={manualQuery}
+              onChange={(e) => setManualQuery(e.target.value)}
+              placeholder="Enter your SQL query here... (Only SELECT and safe EXEC queries are allowed)"
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 font-mono resize-vertical"
+              rows={8}
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleExecuteQuery}
+              disabled={isExecutingQuery || !manualQuery.trim()}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              {isExecutingQuery ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Executing...
+                </>
+              ) : (
+                <>
+                  <Play size={16} />
+                  Execute Query
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={handleAskAi}
+              disabled={!manualQuery.trim()}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <Activity size={16} />
+              Ask AI for Optimization
+            </button>
+          </div>
+
+          {/* Safety Notice */}
+          <div className="mt-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-xs text-yellow-300 flex items-center gap-2">
+            <AlertCircle size={14} />
+            <span>Only read-only SELECT queries and safe EXEC statements are permitted. Queries are validated before execution for security.</span>
+          </div>
+        </div>
+      </section>
+
+      {queryResult !== null && queryResult !== undefined && (
+        <section className="bg-slate-900 p-6 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="text-lg font-semibold text-white flex items-center">
+              <BarChart size={18} className="mr-2 text-blue-400" />
+              Query Result
+            </h4>
+
+            <div className="flex items-center gap-2">
+              {hasTabular && rowsets.length > 1 && (
+                <select
+                  value={activeSetIndex}
+                  onChange={(e) => setActiveSetIndex(parseInt(e.target.value, 10))}
+                  className="bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded-md px-2 py-1"
+                  title="Select result set"
+                >
+                  {rowsets.map((_, i) => (
+                    <option key={i} value={i}>Result set #{i + 1}</option>
+                  ))}
+                </select>
+              )}
+
+              <div className="flex rounded-md overflow-hidden border border-slate-700">
+                <button
+                  onClick={() => setViewMode("table")}
+                  className={`px-3 py-1 text-xs flex items-center gap-1 ${viewMode === "table" ? "bg-slate-700 text-white" : "text-slate-300"}`}
+                  title="Table view"
+                >
+                  <TableIcon size={14} /> Table
+                </button>
+                <button
+                  onClick={() => setViewMode("json")}
+                  className={`px-3 py-1 text-xs ${viewMode === "json" ? "bg-slate-700 text-white" : "text-slate-300"}`}
+                  title="Raw JSON"
+                >
+                  JSON
+                </button>
+              </div>
+
+              {viewMode === "table" && hasTabular && (
+                <button
+                  onClick={handleDownloadCSV}
+                  className="flex items-center gap-1 px-3 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-md border border-slate-700"
+                  title="Download CSV"
+                >
+                  <FileDown size={14} /> CSV
+                </button>
+              )}
+
+              {viewMode === "json" && (
+                <button
+                  onClick={handleCopyJSON}
+                  className="flex items-center gap-1 px-3 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-100 rounded-md border border-slate-700"
+                  title="Copy JSON"
+                >
+                  <Clipboard size={14} /> Copy
+                </button>
+              )}
+            </div>
+          </div>
+
+          {viewMode === "table" && hasTabular ? (
+            <div className="bg-slate-800 border border-slate-600 rounded-lg overflow-auto max-h-96">
+              <table className="min-w-full text-left text-xs text-slate-200">
+                <thead className="sticky top-0 bg-slate-700/80 backdrop-blur border-b border-slate-600">
+                  <tr>
+                    {tableHeaders.map((h) => (
+                      <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeRows.length === 0 ? (
+                    <tr>
+                      <td className="px-3 py-3 text-slate-400" colSpan={tableHeaders.length || 1}>
+                        (No rows)
+                      </td>
+                    </tr>
+                  ) : (
+                    activeRows.map((row, i) => (
+                      <tr key={i} className="border-b border-slate-700/60 hover:bg-slate-700/40">
+                        {tableHeaders.map((h) => (
+                          <td key={h} className="px-3 py-2 align-top">
+                            {(() => {
+                              const v = (row as any)?.[h];
+                              if (v === null || v === undefined) return "";
+                              if (typeof v === "object") return JSON.stringify(v);
+                              return String(v);
+                            })()}
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="bg-slate-800 border border-slate-600 rounded-lg p-4 overflow-auto max-h-96">
+              <pre className="text-xs text-slate-200 whitespace-pre-wrap">
+                {(() => {
+                  try {
+                    if (typeof queryResult === "object" && queryResult !== null && "error" in (queryResult as any)) {
+                      const msg = (queryResult as any).error;
+                      return <span className="text-red-300">Error: {typeof msg === "string" ? msg : JSON.stringify(msg, null, 2)}</span>;
+                    }
+                    return JSON.stringify(queryResult, null, 2);
+                  } catch (e) {
+                    return <span className="text-red-300">Failed to render result: {(e as Error).message}</span>;
+                  }
+                })()}
+              </pre>
+            </div>
+          )}
+        </section>
+      )}
+    </div>
+  );
+};
+
 export const ServerDetailView: FC<ServerDetailViewProps> = ({
   server,
   metrics,
@@ -226,7 +538,6 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   onRefreshKPI,
   insights,
   insightsLoading = false,
-  
 }) => {
   const [activeTab, setActiveTab] = useState<ExtendedTabType>("performance");
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -289,15 +600,14 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   }, [metrics]);
 
   /**
-   * NEW: Track metrics changes to bump "Last updated"
-   * This ensures the timestamp changes even when the interval stays the same.
+   * Track metrics changes to bump "Last updated"
    */
   useEffect(() => {
     if (metrics) setLastRefresh(new Date());
   }, [metrics]);
 
   /**
-   * NEW: Visibility handler – pause auto refresh when tab is hidden
+   * Visibility handler – pause auto refresh when tab is hidden
    */
   useEffect(() => {
     const onVisibility = () => {
@@ -314,14 +624,9 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   }, []);
 
   /**
-   * FIXED: KPI auto-refresh interval
-   * - Only runs on Performance tab
-   * - Clears previous interval before creating a new one
-   * - Respects page visibility
-   * - Uses 10s to match UI copy
+   * KPI auto-refresh interval
    */
   useEffect(() => {
-    // clear existing
     if (kpiRefreshRef.current) {
       clearInterval(kpiRefreshRef.current);
       kpiRefreshRef.current = null;
@@ -335,7 +640,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
         } catch {
           // silent
         }
-      }, 10000); // 10s (matches "Auto-refreshing every 10s")
+      }, 10000);
     }
 
     return () => {
@@ -347,9 +652,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   }, [activeTab, onRefreshKPI]);
 
   /**
-   * FIXED: Alert monitor interval
-   * - Runs on Performance or Alerts tab
-   * - Separate from KPI interval to avoid interference
+   * Alert monitor interval
    */
   useEffect(() => {
     if (alertCheckRef.current) {
@@ -377,7 +680,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     };
   }, [activeTab, onRefreshKPI]);
 
-  // Alert checking logic (same as before, but enhanced)
+  // Alert checking logic (keeping the same logic from original)
   useEffect(() => {
     if (!kpiValues) return;
 
@@ -398,16 +701,14 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
         newAlerts.push({
           type: "cpu",
           level,
-          message: `CPU usage ${
-            level === "critical" ? "critically " : ""
-          }high (${cpuUsage.toFixed(1)}%)`,
+          message: `CPU usage ${level === "critical" ? "critically " : ""}high (${cpuUsage.toFixed(1)}%)`,
           value: cpuUsage,
           threshold:
             level === "critical" ? alertConfig.cpu.critical : alertConfig.cpu.warning,
         });
       }
 
-      const last = lastAlertCheckRef.current;
+      const last = lastAlertCheckRef.current as any;
       if (last.cpu !== cpuUsage || last.cpuLevel !== level) {
         if (level !== "normal") {
           newHistoryItems.push({
@@ -417,23 +718,19 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
             level,
             value: cpuUsage,
             threshold:
-              level === "critical"
-                ? alertConfig.cpu.critical
-                : alertConfig.cpu.warning,
+              level === "critical" ? alertConfig.cpu.critical : alertConfig.cpu.warning,
             message: `CPU usage reached ${level} level (${cpuUsage.toFixed(1)}%)`,
           });
         }
       }
-      currentAlertState.cpuLevel = level;
+      (currentAlertState as any).cpuLevel = level;
     }
 
-    // Similar logic for Memory, Connections, Cache (keeping same as original)
-    // ... (keeping the existing alert logic for brevity)
+    // (Similar logic for Memory, Connections, Cache - keeping same as original)
 
     setActiveAlerts(newAlerts);
     lastAlertCheckRef.current = currentAlertState;
 
-    // Add new items to history
     if (newHistoryItems.length > 0) {
       setAlertHistory((prev) => [...newHistoryItems, ...prev].slice(0, 100));
       newHistoryItems.forEach((it) => {
@@ -489,17 +786,18 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     ).length;
   }, [flattenedInsights]);
 
-  // Action handlers (same as before)
+  // Action handlers
   const handleRefresh = async (tab: ExtendedTabType = activeTab) => {
     try {
-      await onRefresh(tab as TabType);
+      // Only refresh if it's a valid TabType for the onRefresh function
+      if (tab !== "manual-query" && tab !== "alerts") {
+        await onRefresh(tab as TabType);
+      }
       setLastRefresh(new Date());
     } catch (err) {
       console.error("Refresh error:", err);
     }
   };
-
-  
 
   const handleExecuteManualQuery = async (query: string) => {
     if (!query || !server.inventoryID) {
@@ -508,8 +806,6 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
     }
     if (!isReadOnlySQL(query)) {
       toast.error("Only read-only SELECT or safe EXEC queries allowed.");
-      console.log(query)
-      toast.error("❌ Only read-only SELECT or safe EXEC queries allowed.");
       return { error: "Query validation failed on client." };
     }
     try {
@@ -571,6 +867,7 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
   const tabs: ExtendedTabType[] = [
     "performance",
     "insights",
+    "manual-query",
     "alerts",
     "hardware",
   ];
@@ -761,7 +1058,16 @@ export const ServerDetailView: FC<ServerDetailViewProps> = ({
         </div>
       )}
 
-      {/* New Alerts Tab */}
+      {/* New Manual Query Tab */}
+      {activeTab === "manual-query" && (
+        <ManualQueryPanel
+          serverName={server.systemName}
+          onExecuteQuery={handleExecuteManualQuery}
+          onAskAi={handleAskAi}
+        />
+      )}
+
+      {/* Alerts Tab */}
       {activeTab === "alerts" && (
         <div className="space-y-8">
           <AlertDashboard
