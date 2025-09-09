@@ -276,34 +276,49 @@ const ManualQueryPanel: FC<{
     return [];
   }
 
-  function toCSV(rows: Array<Record<string, any>>): string {
-    if (!rows?.length) return "";
-    const headers = Array.from(rows.reduce((s, r) => {
-      Object.keys(r ?? {}).forEach(k => s.add(k));
-      return s;
-    }, new Set<string>()));
+function toCSV(rows: Array<Record<string, any>>): string {
+  if (!rows || rows.length === 0) return "";
+
+  const headers = Array.from(
+    rows.reduce((set: Set<string>, r: Record<string, any>) => { // <--- แก้ไขส่วนนี้
+      if (r && typeof r === "object") {
+        const keys = Object.keys(r);
+        keys.forEach((k) => set.add(k));
+      }
+      return set;
+    }, new Set<string>())
+  );
     const esc = (v: any) => {
       const s = v == null ? "" : String(v);
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
+  
     const lines = [
       headers.map(esc).join(","),
-      ...rows.map(r => headers.map(h => esc(r?.[h])).join(",")),
+      ...rows.map((r) => headers.map((h) => esc((r as any)?.[h])).join(",")),
     ];
+  
     return lines.join("\n");
   }
+  /** ---- end helpers ---- **/   
+  
 
   const rowsets = useMemo(() => extractRowsets(queryResult), [queryResult]);
   const hasTabular = rowsets.length > 0 && rowsets.some(rs => rs?.length > 0);
   const activeRows = rowsets[activeSetIndex] ?? [];
 
   const tableHeaders = useMemo(() => {
-    if (!activeRows?.length) return [] as string[];
+    if (!activeRows || activeRows.length === 0) return [] as string[];
     const keys = new Set<string>();
-    activeRows.forEach(r => Object.keys(r ?? {}).forEach(k => keys.add(k)));
+    activeRows.forEach((r) => {
+      if (r && typeof r === "object") {
+        const cols = Object.keys(r as Record<string, unknown>);
+        cols.forEach((k) => keys.add(k));
+      }
+    });
     return Array.from(keys);
   }, [activeRows]);
-
+  
   const handleExecuteQuery = async () => {
     if (!onExecuteQuery || !manualQuery.trim()) return;
     try {

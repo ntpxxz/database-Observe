@@ -4,7 +4,7 @@ import { DatabaseInventory } from "@/types";
 const config: sql.config = {
   user: process.env.DB_USER || "sa",
   password: process.env.DB_PASSWORD || "123456",
-  server: process.env.DB_HOST || "localhost",
+  server: process.env.DB_HOST || "host.docker.internal",
   database: process.env.DB_NAME || "IT_ManagementDB",
   options: {
     trustServerCertificate: true,
