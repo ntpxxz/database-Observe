@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
-
+console.log('Google API Key:', process.env.GOOGLE_API_KEY);
 export async function POST(req: NextRequest) {
   try {
     const { query } = await req.json();
@@ -22,7 +22,7 @@ SQL Query:
 ${query}
 `;
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     const result = await model.generateContent(prompt);
     const response = result.response.text();
 
@@ -30,7 +30,7 @@ ${query}
   } catch (error: unknown) {
     console.error('Gemini Agent Error:', error);
     return NextResponse.json(
-      { datails: error|| 'Unknown error' },
+      { details: error instanceof Error ? error.message : 'An unknown error occurred.' },
       { status: 500 }
     );
   }

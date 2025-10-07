@@ -261,7 +261,12 @@ slowQueriesRealtime: `
     FROM sys.dm_exec_requests r
     INNER JOIN sys.dm_exec_sessions s ON r.session_id = s.session_id
     CROSS APPLY sys.dm_exec_sql_text(r.sql_handle) st
-    WHERE r.session_id != @@SPID`,
+    WHERE r.session_id != @@SPID
+    AND r.session_id > 50  
+    AND st.text IS NOT NULL
+    AND st.text NOT LIKE '%sys.dm_%'
+    AND st.text NOT LIKE '%ObserveApp%'`,    
+  
 
   waitStats: `
     /* ObserveApp-Monitor:WaitStats */
@@ -408,25 +413,36 @@ slowQueriesRealtime: `
   `,
 
   deadlockAnalysis: `
-    WITH DeadlockEvents AS (
-      SELECT
-        CAST(event_data AS xml) AS event_xml,
-        file_name,
-        file_offset
-      FROM sys.fn_xe_file_target_read_file('system_health*.xel', NULL, NULL, NULL)
-      WHERE object_name = 'xml_deadlock_report'
-    )
-    SELECT TOP 10
-      event_xml.value('(/event/@timestamp)[1]', 'datetime2') AS deadlock_time,
-      event_xml.value('(/event/data[@name="xml_report"]/value/deadlock/process-list/process/@id)[1]', 'varchar(100)') AS process_id_1,
-      event_xml.value('(/event/data[@name="xml_report"]/value/deadlock/process-list/process/@id)[2]', 'varchar(100)') AS process_id_2,
-      event_xml.value('(/event/data[@name="xml_report"]/value/deadlock/process-list/process/inputbuf)[1]', 'nvarchar(max)') AS query_1,
-      event_xml.value('(/event/data[@name="xml_report"]/value/deadlock/process-list/process/inputbuf)[2]', 'nvarchar(max)') AS query_2,
-      event_xml.value('(/event/data[@name="xml_report"]/value/deadlock/resource-list/objectlock/@objectname)[1]', 'sysname') as locked_resource,
-      event_xml AS deadlock_graph
-    FROM DeadlockEvents
-    ORDER BY deadlock_time DESC
-  `,
+  WITH DeadlockEvents AS (
+    SELECT CAST(event_data AS xml) AS event_xml
+    FROM sys.fn_xe_file_target_read_file('system_health*.xel', NULL, NULL, NULL)
+    WHERE object_name = 'xml_deadlock_report'
+  )
+  SELECT TOP 10
+    de.event_xml.value('(/event/@timestamp)[1]', 'datetime2') AS deadlock_time,
+    
+    -- Extract info from the FIRST process
+    victim.value('@id', 'varchar(100)') AS process_id_1,
+    victim.value('inputbuf[1]', 'nvarchar(max)') AS query_1,
+    victim.value('@waittime', 'int') AS wait_time_ms_1, -- <-- New Field
+
+    -- Extract info from the SECOND process
+    other.value('@id', 'varchar(100)') AS process_id_2,
+    other.value('inputbuf[1]', 'nvarchar(max)') AS query_2,
+    other.value('@waittime', 'int') AS wait_time_ms_2, -- <-- New Field
+
+    de.event_xml AS deadlock_graph
+  FROM DeadlockEvents de
+  -- Shred the XML to get each process node
+  CROSS APPLY de.event_xml.nodes('/event/data/value/deadlock/process-list/process') AS p(victim)
+  CROSS APPLY de.event_xml.nodes('/event/data/value/deadlock/process-list/process') AS p2(other)
+  WHERE
+    -- Ensure we get the two different processes involved
+    victim.value('@id', 'varchar(100)') != other.value('@id', 'varchar(100)')
+    -- Get the victim process as the first one
+    AND victim.value('@id', 'varchar(100)') = de.event_xml.value('(/event/data/value/deadlock/victim-list/victimProcess/@id)[1]', 'varchar(100)')
+  ORDER BY deadlock_time DESC
+`,
   databaseInfo: `
  SELECT 
   d.name,

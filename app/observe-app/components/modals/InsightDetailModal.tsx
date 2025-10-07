@@ -1,5 +1,5 @@
 "use client";
-import React, { FC, useState } from "react";
+import React, { FC, useState, useEffect } from "react";
 import { PerformanceInsight } from "@/types";
 import {
   X,
@@ -41,15 +41,25 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
   aiSuggestion,
   loadingSuggestion,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const [queryCopied, setQueryCopied] = useState(false);
+  const [aiCopied, setAiCopied] = useState(false);
+
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => {
+      window.removeEventListener("keydown", handleEsc);
+    };
+  }, [onClose]);
 
   if (!insight) return null;
 
-  // Type-safe access to details with proper type checking
   const details = (insight as any).details || insight;
-
-  // Type-safe query extraction with proper type checking
-  const fullQuery = 
+  const fullQuery =
     (details as any).query ||
     (details as any).queryText ||
     (details as any).blocked_query ||
@@ -58,7 +68,6 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
     insight.title ||
     "No query text available.";
 
-  // Type-safe number access with proper checking
   const meanDuration = (details as any)?.mean_exec_time_ms as number | undefined;
   const waitTime = ((details as any)?.wait_duration_ms ?? (details as any)?.wait_time_ms) as number | undefined;
   
@@ -69,20 +78,25 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
       ? ((details as any)?.wait_time_ms as number)?.toLocaleString()
       : waitTime?.toLocaleString();
 
-  const handleCopy = async () => {
+  const handleCopy = async (textToCopy: string, type: 'query' | 'ai') => {
+    if (!textToCopy) return;
     try {
-      await navigator.clipboard.writeText(fullQuery);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(textToCopy);
+      if (type === 'query') {
+        setQueryCopied(true);
+        setTimeout(() => setQueryCopied(false), 1500);
+      } else {
+        setAiCopied(true);
+        setTimeout(() => setAiCopied(false), 1500);
+      }
     } catch (error: unknown) {
-      console.error("Failed to copy query:", error);
-      alert(`Failed to copy query: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error("Failed to copy:", error);
+      alert(`Failed to copy: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
   const handleAskAiClick = async () => {
     if (!fullQuery || !onAskAi) return;
-    console.log("Sending to AI:", fullQuery);
     await onAskAi(fullQuery);
   };
 
@@ -92,12 +106,11 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="bg-slate-800 border border-slate-700 rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        className="bg-slate-800 border border-slate-700 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-slate-700">
-          <h2 className="text-lg font-bold text-slate-100">{insight.title}</h2>
+          <h2 className="text-xl font-bold text-white">💡 Performance Insight Details</h2>
           <button
             onClick={onClose}
             className="p-1 rounded-full hover:bg-slate-700"
@@ -106,7 +119,7 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
           </button>
         </div>
 
-        {/* Body */}
+        {/* --- Start: แก้ไข Layout กลับเป็นแบบเดิม --- */}
         <div className="p-6 overflow-y-auto space-y-8">
           {/* Performance Info */}
           <section>
@@ -125,7 +138,6 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
                 label="Total Calls"
                 value={((details as any)?.calls as number | undefined)?.toLocaleString()}
               />
-              {/*<DetailItem label="Severity" value={insight.severity} />*/}
             </div>
           </section>
 
@@ -168,7 +180,7 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
                 value={((details as any)?.waiting_tasks_count as number | undefined)?.toLocaleString()}
               />
               <DetailItem
-                label="Resource Wait Time (ms)"
+                label="Resource Wait (ms)"
                 value={((details as any)?.resource_wait_time_ms as number | undefined)?.toLocaleString()}
               />
             </div>
@@ -181,37 +193,40 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
                 Full Query Text
               </h3>
               <button
-                onClick={handleCopy}
+                onClick={() => handleCopy(fullQuery, 'query')}
                 className="flex items-center gap-1 text-sm text-cyan-300 hover:text-cyan-100"
               >
-                {copied ? (
+                {queryCopied ? (
                   <ClipboardCheck size={16} />
                 ) : (
                   <Clipboard size={16} />
                 )}
-                {copied ? "Copied!" : "Copy"}
+                {queryCopied ? "Copied!" : "Copy"}
               </button>
             </div>
-            <pre className="bg-slate-900/70 p-4 rounded-md text-sm text-cyan-300 font-mono overflow-x-auto border border-slate-700">
+            <pre className="bg-slate-900/70 p-4 rounded-md text-sm text-cyan-300 font-mono overflow-x-auto border border-slate-700 max-h-48">
               <code>{fullQuery}</code>
             </pre>
           </section>
 
           {/* AI SQL Suggestion */}
-          <section className="mt-6">
-            <div className="flex items-center gap-2 mb-2 text-emerald-400">
-              <Bot size={16} />
-              <h3 className="text-sm font-semibold uppercase tracking-wider">
-                AI Suggestion
-              </h3>
+          <section>
+            <div className="flex justify-between items-center mb-1">
+              <h3 className="text-sm font-semibold text-slate-400">AI Suggestion</h3>
+              {aiSuggestion && !loadingSuggestion && (
+                 <button onClick={() => handleCopy(aiSuggestion, 'ai')} className="flex items-center gap-1 text-sm text-green-400 hover:text-green-200">
+                   {aiCopied ? <ClipboardCheck size={16} /> : <Clipboard size={16} />}
+                   {aiCopied ? "Copied!" : "Copy"}
+                 </button>
+              )}
             </div>
-            {loadingSuggestion ? (
-              <p className="text-sm text-slate-400">Generating suggestion...</p>
-            ) : (
-              <pre className="bg-slate-900/70 p-4 rounded-md text-sm text-green-300 font-mono overflow-x-auto border border-slate-700">
-                <code>{aiSuggestion || "No suggestion yet."}</code>
-              </pre>
-            )}
+            <div className="bg-slate-900/70 p-4 rounded text-sm text-green-300 font-mono overflow-auto whitespace-pre-wrap break-words border border-slate-700 min-h-[100px] max-h-[300px]">
+              {loadingSuggestion ? (
+                <p className="text-slate-400 italic">Generating suggestion...</p>
+              ) : (
+                <code>{aiSuggestion || "Click 'Ask AI' to get a tuning suggestion."}</code>
+              )}
+            </div>
           </section>
 
           {/* Blocked Query (Deadlock) */}
@@ -226,16 +241,16 @@ export const InsightDetailModal: FC<InsightDetailModalProps> = ({
             </section>
           )}
         </div>
+        {/* --- End: แก้ไข Layout กลับเป็นแบบเดิม --- */}
 
-        {/* Footer */}
-        <div className="p-6 border-t border-slate-700 flex justify-between">
+        <div className="p-4 border-t border-slate-700 flex justify-between items-center">
           <button
             onClick={handleAskAiClick}
-            disabled={!onAskAi || !fullQuery}
+            disabled={!onAskAi || !fullQuery || loadingSuggestion}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-600/50 disabled:cursor-not-allowed text-white py-2 px-4 rounded-md"
           >
             <Bot size={16} />
-            Ask AI
+            {loadingSuggestion ? 'Thinking...' : 'Ask AI'}
           </button>
           <button
             onClick={onClose}
